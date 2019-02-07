@@ -557,10 +557,13 @@ methods
         life_times = [];
         displacements = [];
         
+        intensities = [];
+        
         for xi = 1:size(o.xenapse_centers, 1)
             
-            spots_history = o.analyze_xenapse(xi);
+            [spots_history, intensity] = o.analyze_xenapse(xi);
 
+            intensities = [intensities; intensity];
             
             for i = 1:numel(spots_history)
                 sph = spots_history{i};
@@ -632,6 +635,10 @@ methods
         % Create the textbox
         h = annotation('textbox',[0.58 0.75 0.1 0.1]);
         set(h,'String', {minlabel, maxlabel, mnlabel, mdlabel, stdlabel});        
+
+        f = figure;
+        intensities = mean(intensities);
+        plot(intensities);
         
     end
     
@@ -870,7 +877,7 @@ methods
         
     end
 
-    function spots_history = analyze_xenapse(o, xenapse_index)
+    function [spots_history, intensity] = analyze_xenapse(o, xenapse_index)
     
         opts.waveletLevelThresh = 2; % threshold scale for local MAD thresholding
         opts.waveletLevelAdapt = 1; % use adaptive setting for above.
@@ -897,12 +904,16 @@ methods
         alpha = 0.2;
 
         spots_history = {};
+        intensity = [];
+        
 
         for i = starting_frame:size(o.data, 3)
             frame = double(o.data(:, :, i));
             frame = frame(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
             frame = frame - bg;
 
+            intensity = [intensity mean(mean(frame))]; 
+            
             frame = alpha * frame + (1.0 - alpha) * current;
             current = frame;
             
