@@ -51,7 +51,8 @@ properties
     panel_top_separator = 0;
     panel_general = 0;
     panel_xenapse = 0;
-    
+
+    % general panel 
     slider_frames = 0;
     button_prev = 0;
     button_next = 0;
@@ -67,7 +68,12 @@ properties
     
     combobox_color_map = 0;
     text_color_map_label = 0;      
-      
+    
+    % xenapse panel
+    slider_madwc = 0;
+    panel_separator_xenapse_1st = 0;
+    panel_separator_xenapse_2nd = 0;
+          
 end
     
 methods
@@ -219,7 +225,7 @@ methods
         jSlider = javax.swing.JSlider;
         [jSlider, hContainer] = javacomponent(jSlider, slider_position, o.panel_general);
         o.slider_frames = {jSlider, hContainer};
-        set(o.slider_frames{1}, 'MajorTickSpacing', 1, 'PaintTicks', true, 'PaintLabels', false);
+        set(o.slider_frames{1}, 'MajorTickSpacing', 10, 'PaintTicks', true, 'PaintLabels', false);
         set(o.slider_frames{1}, 'Value', 1, 'Minimum', 1, 'Maximum', max_frames);
         set(o.slider_frames{1}, 'StateChangedCallback', @o.on_slider_frames_changed);
 
@@ -370,6 +376,13 @@ methods
       
       panel_xenapse_position = [panel_general_width, 2, views_width, top_panel_height - 1];
 
+      y = 75;
+      separator_margin = views_border;
+      sep_width = panel_general_width - separator_margin * 2;
+      panel_separator_general_1st_position = [separator_margin, y, sep_width, 1 ];
+      y = y - 30;
+      panel_separator_general_2nd_position = [separator_margin, y, sep_width, 1 ];
+      
       if o.panel_xenapse == 0
           
         o.panel_xenapse = uipanel('Parent', o.panel_top, 'Title', '', 'Units', 'Pixels', 'Position', ...
@@ -382,22 +395,49 @@ methods
           'BackgroundColor', 'black', 'Position', [x, separator_margin, 1, top_panel_height - separator_margin*2 ] );
       
         x = 15;
+        y = 85;
         button_width = 100;
+        button_height = 25;
         space = 10;
         
         button_analyze_single = uicontrol('Parent', o.panel_xenapse, 'Style', 'pushbutton', 'String', 'Analyze single', ...
-          'Position', [x, 20, button_width, 30], ...
+          'Position', [x, y, button_width, button_height], ...
           'Callback', @o.on_analyze_single);
       
         x = x + button_width + space;
 
         button_analyze_all = uicontrol('Parent', o.panel_xenapse, 'Style', 'pushbutton', 'String', 'Analyze all', ...
-          'Position', [x, 20, button_width, 30], ...
+          'Position', [x, y, button_width, button_height], ...
           'Callback', @o.on_analyze_all);
-        
+
+      
+        o.panel_separator_xenapse_1st = uipanel('Parent', o.panel_xenapse, 'Units', 'Pixels', 'BorderType', 'none', ...          
+          'BackgroundColor', [0.7, 0.7, 0.7], 'Position', panel_separator_general_1st_position );      
+
+        o.panel_separator_xenapse_2nd = uipanel('Parent', o.panel_xenapse, 'Units', 'Pixels', 'BorderType', 'none', ...          
+          'BackgroundColor', [0.7, 0.7, 0.7], 'Position', panel_separator_general_2nd_position );      
+      
+      
+        x = 15;
+        y = 15;
+      
+        slider_max = 500;
+        slider_min = 0;
+        slider_width = 80;
+        slider_position = [x, y, slider_width, 20];
+            
+        jSlider = javax.swing.JSlider;
+        [jSlider, hContainer] = javacomponent(jSlider, slider_position, o.panel_xenapse);
+        o.slider_madwc = {jSlider, hContainer};
+        set(o.slider_madwc{1}, 'MajorTickSpacing', 100, 'PaintTicks', true, 'PaintLabels', false);
+        set(o.slider_madwc{1}, 'Value', o.spot_tracker.madwc * 100, 'Minimum', slider_min, 'Maximum', slider_max);
+        set(o.slider_madwc{1}, 'StateChangedCallback', @o.on_slider_madwc_changed);
+      
       else
          
         set(o.panel_xenapse, 'Position', panel_xenapse_position); 
+        set(o.panel_separator_xenapse_1st, 'Position', panel_separator_xenapse_1st_position);  
+        set(o.panel_separator_xenapse_2nd, 'Position', panel_separator_xenapse_2nd_position); 
       
       end
       
@@ -545,6 +585,14 @@ methods
         end        
         
     end
+
+    % xenapse events
+    
+    function on_slider_madwc_changed(o, slider_object, event_data)
+        
+        o.update_xenapse_view();
+        
+    end    
     
     function on_analyze_single(o, button_object, event_data)
         o.run();
@@ -758,7 +806,10 @@ methods
             o.xenapse_view_image_initialized = 1;
             
         end
-                
+
+        madwc = round(get(o.slider_madwc{1}, 'Value')) / 100.;
+        o.spot_tracker.madwc = madwc;
+
         [spots, spots_amp, ld, spots_area] = o.spot_tracker.detect_spots(frame_data);        
         
         new_spot_circles = {};

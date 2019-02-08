@@ -1,4 +1,4 @@
-function [spots,spotsAmp,ld, spotsArea]=waveletSpots(img,opts)
+function [spots,spotsAmp,ld, spotsArea]=waveletSpots(img, opts, madwc)
 % Find spots using multiscale product wavelet transform.
 %
 % See: J. C. Olivo-Marin, Pattern Recognition 35 (2002) 1989-1996 and
@@ -77,7 +77,7 @@ end
 % Hard threshold wavelet coefficients.
 for L=minProdL:levels
   % Threshold is median + k * median absolute deviation of wavelet coefficients, over 0.67.
-  madwc = 1.4826;
+  %madwc = 1.4826;
   %madwc = 2.0;
   WL = W(:,:,:,L);
   if localmad

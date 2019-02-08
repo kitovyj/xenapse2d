@@ -5,7 +5,7 @@ properties
     spots_history = {};
     prev_spots_history = {};
     time_point = 1;
-    
+    madwc = 1.4826;
 end
     
 methods
@@ -33,7 +33,7 @@ methods
         wl_opts.debug.showWavelet = 0; 
         
         % [spots, spots_amp, ld, spots_area]
-        [spots, spots_amp, ld, spots_area] = waveletSpots(data, wl_opts);        
+        [spots, spots_amp, ld, spots_area] = waveletSpots(data, wl_opts, o.madwc);        
        
     end    
     
