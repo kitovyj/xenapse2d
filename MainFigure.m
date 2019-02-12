@@ -889,10 +889,12 @@ methods
         
         info = imfinfo(fn);
         
-        data = [];
+        data = zeros(info(1).Height, info(1).Width, numel(info));
         for i = 1:numel(info)
             frame = imread(fn, i);
-            data = cat(3, data, frame);
+            data(:, :, i) = double(frame);
+            
+            %data = cat(3, data, frame);
 
             p = single(i) / numel(info);
             waitbar(p, wait_bar);
