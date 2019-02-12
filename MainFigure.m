@@ -34,7 +34,7 @@ properties
     stimulation_start = 1.0;
     temporal_averaging_alpha = 0.2;
     
-    spot_tracker = SpotTracker;
+    spot_tracker = 0;
     
     viewed_frame_index = 1; 
     
@@ -71,8 +71,11 @@ properties
     
     % xenapse panel
     slider_madwc = 0;
+    
     panel_separator_xenapse_1st = 0;
     panel_separator_xenapse_2nd = 0;
+    
+    checkbox_track = 0;
           
 end
     
@@ -81,6 +84,8 @@ methods
     % constructor
                  
     function o = MainFigure()
+        
+        o.spot_tracker = SpotTracker();
         
         o.figure_id = figure; 
         
@@ -378,10 +383,10 @@ methods
 
       y = 75;
       separator_margin = views_border;
-      sep_width = panel_general_width - separator_margin * 2;
-      panel_separator_general_1st_position = [separator_margin, y, sep_width, 1 ];
+      sep_width = views_width - separator_margin;
+      panel_separator_xenapse_1st_position = [separator_margin, y, sep_width, 1 ];
       y = y - 30;
-      panel_separator_general_2nd_position = [separator_margin, y, sep_width, 1 ];
+      panel_separator_xenapse_2nd_position = [separator_margin, y, sep_width, 1 ];
       
       if o.panel_xenapse == 0
           
@@ -412,14 +417,29 @@ methods
 
       
         o.panel_separator_xenapse_1st = uipanel('Parent', o.panel_xenapse, 'Units', 'Pixels', 'BorderType', 'none', ...          
-          'BackgroundColor', [0.7, 0.7, 0.7], 'Position', panel_separator_general_1st_position );      
+          'BackgroundColor', [0.7, 0.7, 0.7], 'Position', panel_separator_xenapse_1st_position );      
 
         o.panel_separator_xenapse_2nd = uipanel('Parent', o.panel_xenapse, 'Units', 'Pixels', 'BorderType', 'none', ...          
-          'BackgroundColor', [0.7, 0.7, 0.7], 'Position', panel_separator_general_2nd_position );      
+          'BackgroundColor', [0.7, 0.7, 0.7], 'Position', panel_separator_xenapse_2nd_position );      
       
       
         x = 15;
+        y = 50;
+        checkbox_track_width = 60;    
+        
+        o.checkbox_track = uicontrol('Parent', o.panel_xenapse, 'Style', 'checkbox', 'String', ' Track', ...
+          'Position', [x, y, checkbox_track_width, 20], 'Value', 0, ...
+          'Callback', @o.on_checkbox_track_clicked);      
+      
+        x = 15;
         y = 15;
+      
+        text_wadc_label_width = 40;
+        
+        text_wadc_label = uicontrol('Parent', o.panel_xenapse, 'Style', 'text', 'String', "WADC:", ...
+          'Position', [x, y - 3, text_wadc_label_width, 20], 'HorizontalAlignment', 'left'); 
+      
+        x = x + text_wadc_label_width;
       
         slider_max = 500;
         slider_min = 0;
@@ -480,11 +500,15 @@ methods
         
     end
     
+    % figure events
+    
     function on_figure_resized(o, figure_object, ~)
                   
         o.arrange_controls();
       
     end
+    
+    % general events
     
     function on_edit_temporal_averaging_changed(o, image_object, ~)
        o.prepare_processed_data();
@@ -546,7 +570,16 @@ methods
     function on_slider_frames_changed(o, slider_object, event_data)
         
         value = round(get(slider_object, 'Value'));
+        if value == o.viewed_frame_index
+            return
+        end
+        
+        if o.get_do_track() && o.viewed_frame_index > value
+            o.spot_tracker.clear_history();
+        end
+
         o.viewed_frame_index = value;
+        
         o.update_current_frame_text();
         o.update_xenapse_view();
         o.update_general_view();
@@ -558,6 +591,11 @@ methods
             return
         end
         o.viewed_frame_index = o.viewed_frame_index - 1;
+        
+        if o.get_do_track()
+            o.spot_tracker.clear_history();
+        end
+        
         set(o.slider_frames{1}, 'Value', o.viewed_frame_index);
         o.update_current_frame_text();
         o.update_xenapse_view();
@@ -594,106 +632,37 @@ methods
         
     end    
     
+    function on_checkbox_track_clicked(o, checkbox_object, event_data)
+        
+        o.spot_tracker.clear_history();
+        
+        if o.get_do_track() == 0
+           
+            o.update_xenapse_view();
+            
+        end
+        
+        
+    end
+        
     function on_analyze_single(o, button_object, event_data)
-        o.run();
+        o.analyze_xenapses([o.selected_xenapse]);
     end
     
     function on_analyze_all(o, button_object, event_data)
         
-        wait_bar = waitbar(0, 'Analyzing spots...');
-        
-        life_times = [];
-        displacements = [];
-        
-        intensities = [];
-        
-        for xi = 1:size(o.xenapse_centers, 1)
-            
-            [spots_history, intensity] = o.analyze_xenapse(xi);
-
-            intensities = [intensities; intensity];
-            
-            for i = 1:numel(spots_history)
-                sph = spots_history{i};
-
-                life_time = sph(end, 1) - sph(1, 1);
+        o.analyze_xenapses([1:size(o.xenapse_centers, 1)]);
                 
-                if life_time < 3
-                    continue
-                end
-                
-                life_times = [life_times life_time];
-                
-                path = sph(:, 4:5);
-                max_displacement = 0;
-                for j = 1:size(path, 1)
-                    d = sqrt(sum((path(1, :) - path(j, :)) .^ 2));
-                    if d > max_displacement
-                        max_displacement = d;
-                    end
-                end
-                displacements = [displacements max_displacement];
-            end
-            
-            p = single(xi) / size(o.xenapse_centers, 1);
-            waitbar(p, wait_bar);
-
-            
-        end
-
-        close(wait_bar);
-        
-        f = figure;
-        set(f, 'name', o.loaded_file_name, 'NumberTitle', 'off');
-        h = histogram(life_times, 'FaceColor', 'g');
-        
-        % Calculate the min, max, mean, median, and standard deviation
-        dmin = min(life_times);
-        dmax = max(life_times);
-        mn = mean(life_times);
-        md = median(life_times);
-        stdv = std(life_times);
-        % Create the labels
-        minlabel = sprintf('Min: %g', dmin);
-        maxlabel = sprintf('Max: %g', dmax);
-        mnlabel = sprintf('Mean: %g', mn);
-        mdlabel = sprintf('Median: %g', md);
-        stdlabel = sprintf('Std Deviation: %g', stdv);
-        % Create the textbox
-        h = annotation('textbox', [0.58 0.75 0.1 0.1]);
-        set(h,'String',{minlabel, maxlabel, mnlabel, mdlabel, stdlabel});        
-
-        f = figure;
-        set(f, 'name', o.loaded_file_name, 'NumberTitle', 'off');
-        
-        h = histogram(displacements, 'FaceColor', 'r');
-
-        % Calculate the min, max, mean, median, and standard deviation
-        dmin = min(displacements);
-        dmax = max(displacements);
-        mn = mean(displacements);
-        md = median(displacements);
-        stdv = std(displacements);
-        % Create the labels
-        minlabel = sprintf('Min: %g', dmin);
-        maxlabel = sprintf('Max: %g', dmax);
-        mnlabel = sprintf('Mean: %g', mn);
-        mdlabel = sprintf('Median: %g', md);
-        stdlabel = sprintf('Std Deviation: %g', stdv);
-        % Create the textbox
-        h = annotation('textbox',[0.58 0.75 0.1 0.1]);
-        set(h,'String', {minlabel, maxlabel, mnlabel, mdlabel, stdlabel});        
-
-        f = figure;
-        intensities = mean(intensities);
-        plot(intensities);
-        
     end
     
     function r = get_subtract_background(o)
          r = get(o.checkbox_subtract_background, 'Value');
     end
-        
+
+    function r = get_do_track(o)
+         r = get(o.checkbox_track, 'Value');
+    end
+    
     function prepare_processed_data(o)
                 
         ta = get(o.checkbox_temporal_averaging, 'Value');
@@ -789,8 +758,10 @@ methods
             frame_data = frame_data - bg_data;
         end
         
-        frame_data_u8 = uint8(frame_data / 16);
-        
+        frame_data_u8 = frame_data * 512;
+        frame_data_u8(frame_data_u8 > 255) = 255;
+        frame_data_u8 = uint8(frame_data_u8);
+                
         axes(o.xenapse_view_axes);
         
         if o.xenapse_view_image_initialized
@@ -810,25 +781,44 @@ methods
         madwc = round(get(o.slider_madwc{1}, 'Value')) / 100.;
         o.spot_tracker.madwc = madwc;
 
-        [spots, spots_amp, ld, spots_area] = o.spot_tracker.detect_spots(frame_data);        
+       
+        if o.get_do_track()
+            
+            spots = o.spot_tracker.track(frame_data);        
+                    
+        else
+            
+            spots = o.spot_tracker.detect_spots(frame_data);
+            
+        end
+        
+        % id y x amplitude area
         
         new_spot_circles = {};
         new_spot_texts = {};
         
-        for spi = 1:size(spots, 1)
+        for spi = 1:numel(spots)
             
-            sp = spots(spi, :);
-            area = spots_area(spi);
-
-            y = sp(1);
-            x = sp(2);
+            s = spots{spi};
+            
+            p = s(2:3);
+            area = s(5);
+            id = s(1);
+            
+            y = p(1);
+            x = p(2);
 
             r = sqrt(area / 3.14);
 
             c = draw_circle(x, y, r);
-            t = text(x, y, num2str(area), 'Color', 'green', 'HorizontalAlignment', 'center')
+            
+            if o.get_do_track()
+                t = text(x, y - 2*r, num2str(id), 'Color', 'black', 'HorizontalAlignment', 'center', 'BackgroundColor', [1, 1, 1, 0.5], ...
+                    'EdgeColor', [0, 0, 0, 0.5]);
+                new_spot_texts{spi} = t;
+            end    
+            
             new_spot_circles{spi} = c;
-            new_spot_texts{spi} = t;
             
         end      
         
@@ -859,7 +849,9 @@ methods
             frame_data = frame_data - o.background;
         end
             
-        frame_data_u8 = uint8(frame_data / 16);
+        frame_data_u8 = frame_data * 512;
+        frame_data_u8(frame_data_u8 > 255) = 255;
+        frame_data_u8 = uint8(frame_data_u8);
 
         axes(o.general_view_axes);
 
@@ -880,6 +872,11 @@ methods
         
     end
     
+    
+    function analyze_intensity_levels(o)
+        
+    end
+    
     function load(o, fn)
 
         o.general_view_image_initialized = 0;
@@ -888,17 +885,31 @@ methods
         o.selected_xenapse = 1;
         o.viewed_frame_index = 1;        
         
+        wait_bar = waitbar(0, 'Loading file...');
+        
+        info = imfinfo(fn);
+        
         data = [];
-        for i = 1:239
+        for i = 1:numel(info)
             frame = imread(fn, i);
             data = cat(3, data, frame);
+
+            p = single(i) / numel(info);
+            waitbar(p, wait_bar);
+                
         end
         
-        total_mean = uint8(mean(data(:, :, :), 3) / 16);
+        depth = info(1).BitDepth;
+        
+        data = single(data) / single(max(max(max(data))));
+        
+        total_mean = mean(data(:, :, :), 3);
+        
+        %data = data / (2^(depth - 8));
        
         %set(o.general_view_axes, 'Visible', 'off'); % imagesc makes axes visible again!       
         
-        [centers, radii, metric] = imfindcircles(total_mean, [7 20], 'ObjectPolarity', 'bright');
+        [centers, radii, metric] = imfindcircles(total_mean, [7 22], 'ObjectPolarity', 'bright');
         o.xenapse_centers = centers; 
         o.xenapse_radii = radii;
         o.xenapse_radii(:) = mean(o.xenapse_radii);
@@ -908,7 +919,9 @@ methods
         o.original_data = data;
         o.data = data;
         
-        o.prepare_processed_data();
+        close(wait_bar);
+        
+        o.prepare_processed_data();        
         
         o.update_general_view();        
         o.update_xenapse_view();
@@ -928,25 +941,17 @@ methods
         
     end
 
-    function [spots_history, intensity] = analyze_xenapse(o, xenapse_index)
+    function [spots_history, intensity] = analyze_xenapse(o, xenapse_index, waitbar_object, current_progress, total_work)
     
-        opts.waveletLevelThresh = 2; % threshold scale for local MAD thresholding
-        opts.waveletLevelAdapt = 1; % use adaptive setting for above.
-        opts.waveletNumLevels = 3;  % number of wavelet levels
-        opts.waveletLocalMAD = 0; % locally estimated MAD
-        opts.waveletBackSub = 0;  % background subtraction
-        opts.waveletMinLevel = 1; % discard wavelet levels below this
-
-        opts.waveletPrefilter = 0;
-        opts.debug.showWavelet = 0;
-     
-
-        starting_frame = 20;
+        
+        tracker = SpotTracker();     
+        
+        stim_start_frame = round(o.stimulation_start * o.frame_rate, 0);        
 
         rect = get_xenapse_rectangle(o, xenapse_index);
         rect = int32(rect);
         
-        current = double(o.data(:, :, starting_frame));
+        current = double(o.data(:, :, stim_start_frame));
         current = current(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
         bg = o.background(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
 
@@ -954,11 +959,9 @@ methods
 
         alpha = 0.2;
 
-        spots_history = {};
         intensity = [];
         
-
-        for i = starting_frame:size(o.data, 3)
+        for i = stim_start_frame:size(o.data, 3)
             frame = double(o.data(:, :, i));
             frame = frame(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
             frame = frame - bg;
@@ -968,239 +971,107 @@ methods
             frame = alpha * frame + (1.0 - alpha) * current;
             current = frame;
             
-            [spots, spots_amp, ld, spots_area] = waveletSpots(frame, opts);
-
-            max_distance = 2.;
-
-            for spi = 1:size(spots, 1)
-                sp = spots(spi, :);
-                spa = spots_amp(spi);
-                sp_area = spots_area(spi);
-
-                identified = 0;
-
-                for j = 1:numel(spots_history)
-
-                    spot_history = spots_history{j};
-
-                    last = spot_history(end, :);            
-                    last_pos = last(4:5);
-                    curr_pos = sp(1:2);
-
-                    d  = sqrt(sum((last_pos - curr_pos) .^ 2));
-                    td = i - last(1);
-
-                    if td < 5 && d < max_distance
-
-                        spots_history{j} = [ spots_history{j}; [i spa sp_area sp] ];
-                        identified = 1;
-
-                    end
-
-                end
-
-                if identified == 0
-                   spots_history{end + 1} = [i spa sp_area sp];
-                end
-
-            end
+            tracker.track(frame);
+            
+            waitbar(single(current_progress) / total_work, waitbar_object);
+            current_progress = current_progress + 1;
 
         end
+        
+        spots_history = tracker.spots_history;
 
     end 
     
-    
-    function run(o)
-    
-        opts.waveletLevelThresh = 2; % threshold scale for local MAD thresholding
-        opts.waveletLevelAdapt = 1; % use adaptive setting for above.
-        opts.waveletNumLevels = 3;  % number of wavelet levels
-        opts.waveletLocalMAD = 0; % locally estimated MAD
-        opts.waveletBackSub = 0;  % background subtraction
-        opts.waveletMinLevel = 1; % discard wavelet levels below this
-
-        opts.waveletPrefilter = 0;
-        opts.debug.showWavelet = 0;
-     
-
-        starting_frame = 20;
-
-        rect = get_xenapse_rectangle(o, o.selected_xenapse);
-        rect = int32(rect);
+    function set_plot_annotation(o, data)
         
-        current = double(o.data(:, :, starting_frame));
-        current = current(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
-        bg = o.background(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
+        % Calculate the min, max, mean, median, and standard deviation
+        dmin = min(data);
+        dmax = max(data);
+        mn = mean(data);
+        md = median(data);
+        stdv = std(data);
+        % Create the labels
+        minlabel = sprintf('Min: %g', dmin);
+        maxlabel = sprintf('Max: %g', dmax);
+        mnlabel = sprintf('Mean: %g', mn);
+        mdlabel = sprintf('Median: %g', md);
+        stdlabel = sprintf('Std Deviation: %g', stdv);
+        % Create the textbox
+        h = annotation('textbox', [0.58 0.75 0.1 0.1]);
+        set(h,'String', { minlabel, maxlabel, mnlabel, mdlabel, stdlabel });        
+        
+    end    
+    
+    function analyze_xenapses(o, indices)
 
-        current = current - bg;
-
-        alpha = 0.2;
-
-        spots_history = {};
-
-        for i = starting_frame:size(o.data, 3)
-            frame = double(o.data(:, :, i));
-            frame = frame(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
-            frame = frame - bg;
-
-            frame = alpha * frame + (1.0 - alpha) * current;
-            current = frame;
-            
-            [spots, spots_amp, ld, spots_area] = waveletSpots(frame, opts);
-
-            max_distance = 2.;
-
-            for spi = 1:size(spots, 1)
-                sp = spots(spi, :);
-                spa = spots_amp(spi);
-                sp_area = spots_area(spi);
-
-                identified = 0;
-
-                for j = 1:numel(spots_history)
-
-                    spot_history = spots_history{j};
-
-                    last = spot_history(end, :);            
-                    last_pos = last(4:5);
-                    curr_pos = sp(1:2);
-
-                    d  = sqrt(sum((last_pos - curr_pos) .^ 2));
-                    td = i - last(1);
-
-                    if td < 5 && d < max_distance
-
-                        spots_history{j} = [ spots_history{j}; [i spa sp_area sp] ];
-                        identified = 1;
-
-                    end
-
-                end
-
-                if identified == 0
-                   spots_history{end + 1} = [i spa sp_area sp];
-                end
-
-            end
-
-        end
-
-        disp(size(spots_history));
-
-        %quiver(x,y,u,v);
-        figure;
-        %65:100, 115:155
-        xlim([1 40])
-        ylim([1 35])
-        ax = gca;
-        ax.YDir = 'reverse';
-        xlabel('pixels');
-        ylabel('pixels');
-        hold;
+        wait_bar = waitbar(0, 'Analyzing spots...');
+        stim_start_frame = round(o.stimulation_start * o.frame_rate, 0);        
+        total_frames_to_analyze = size(o.data, 3) - stim_start_frame;
+        total_work = total_frames_to_analyze * numel(indices);
+        current_progress = 1;
         
         life_times = [];
         displacements = [];
-       
-        for i = 1:numel(spots_history)
-            sph = spots_history{i};
+        
+        intensities = [];
+          
+        
+        for k = 1:numel(indices)
+            
+            xi = indices(k);
+            
+            [spots_history, intensity] = o.analyze_xenapse(xi, wait_bar, current_progress, total_work);
+           
+            current_progress = current_progress + total_frames_to_analyze;
 
-            path = sph(:, 4:5);
+            intensities = [intensities; intensity];
             
-            max_displacement = 0;
-            
-            %path 
-            
-            for j = 1:size(path, 1)
+            for i = 1:numel(spots_history)
+                sph = spots_history{i};
+
+                life_time = sph(end, 1) - sph(1, 1);
                 
-                d = sqrt(sum((path(1, :) - path(j, :)) .^ 2));
-                
-                if d > max_displacement
-                    max_displacement = d;
+                %{
+                if life_time < 3
+                    continue
                 end
-
+                %}
+                
+                life_times = [life_times life_time];
+                
+                path = sph(:, 4:5);
+                max_displacement = 0;
+                for j = 1:size(path, 1)
+                    d = sqrt(sum((path(1, :) - path(j, :)) .^ 2));
+                    if d > max_displacement
+                        max_displacement = d;
+                    end
+                end
+                displacements = [displacements max_displacement];
             end
-
-            displacements = [displacements max_displacement];
-            
-            life_time = sph(end, 1) - sph(1, 1);
-            
-            life_times = [life_times life_time];
-
-            if life_time < 5
-                continue
-            end
-
-            a = max(sph(:, 2));
-
-            %disp(avg_a);
-            %{
-            if a < 0.005
-                continue
-            end
-            %}
-
-            x = path(:, 2);
-            y = path(:, 1);
-            plot(x, y);
-            axis equal
+                        
         end
 
-        figure;
-        %65:100, 115:155
-        xlim([1 40])
-        ylim([1 35])
-        ax = gca;
-        ax.YDir = 'reverse';
-        xlabel('pixels');
-        ylabel('pixels');
-        hold;
-
-        for i = 1:numel(spots_history)
-
-            sph = spots_history{i};
-
-            path = sph(:, 4:5);
-
-            life_time = sph(end, 1) - sph(1, 1) + 1;
-
-            if life_time < 5
-                continue
-            end
-
-            max_area = max(sph(:, 3));
-            mean_area = mean(sph(:, 3));
-
-            if max_area < 5
-                continue
-            end
-
-            x = mean(path(:, 2));
-            y = mean(path(:, 1));
-
-            r = sqrt(mean_area / 3.14);
-
-
-            cc =  min(0.8, 10. / life_time); 
-            color = [cc, cc, cc, 1.0 - cc];
-
-            c = draw_circle(x, y, r);
-
-            c.FaceColor = color;
-            c.EdgeColor = color;
-
-            text_color = [1, 1, 1, 1.0 - cc];
-            text(x, y, num2str(life_time), 'Color', text_color, 'HorizontalAlignment', 'center');   
-
-        end
+        close(wait_bar);
         
-        figure;
-        h = histogram(life_times)
-
-        figure;
-        h = histogram(displacements)
+        f = figure;
+        set(f, 'name', ['Life time - ' o.loaded_file_name], 'NumberTitle', 'off');
+        h = histogram(life_times, 'FaceColor', 'g');
+        o.set_plot_annotation(life_times);
         
-    end % method
+        f = figure;
+        set(f, 'name', ['Motility - ' o.loaded_file_name], 'NumberTitle', 'off');
+        h = histogram(displacements, 'FaceColor', 'r');
+        o.set_plot_annotation(displacements);
+      
+        f = figure;
+        set(f, 'name', ['Intensity - ' o.loaded_file_name], 'NumberTitle', 'off');        
+        intensities = mean(intensities, 1);
+        plot(intensities);
+        
+    end
     
+        
 end % methods
 
 end % class
