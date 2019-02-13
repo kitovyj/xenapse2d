@@ -4,6 +4,7 @@ properties
    
     spots_history = {};
     prev_spots_history = {};
+    active_spots = {};
     time_point = 1;
     madwc = 1.4826;
     max_distance = 2.0;
@@ -50,6 +51,7 @@ methods
     
     function clear_history(o)
        o.spots_history = {}; 
+       o.active_spots = {};
     end
     
     function spots = track(o, data)
@@ -58,28 +60,38 @@ methods
         
         spots = o.detect_spots(data);
         
+        new_active_spots = {};
+        
         for spi = 1:numel(spots)
-            
+                        
             s = spots{spi};
             spa = s(4);
             sp_area = s(5);
 
             identified = 0;
 
-            for j = 1:numel(o.prev_spots_history)
+            for ai = 1:numel(o.active_spots)
+
+                j = o.active_spots{ai};
 
                 spot_history = o.prev_spots_history{j};
 
                 last = spot_history(end, :);            
+                td = o.time_point - last(1);
+                
+                if td >= o.inertia
+                    continue
+                end
+                
                 last_pos = last(2:3);
                 curr_pos = s(2:3);
 
                 d  = sqrt(sum((last_pos - curr_pos) .^ 2));
-                td = o.time_point - last(1);
-
-                if td < o.inertia && d < o.max_distance
+                
+                if d < o.max_distance
 
                     o.spots_history{j} = [ o.spots_history{j}; [o.time_point s(2:3) spa sp_area] ];
+                    new_active_spots{end + 1} = j;
                     identified = 1;
                     break;
 
@@ -89,6 +101,7 @@ methods
 
             if identified == 0
                o.spots_history{end + 1} = [o.time_point s(2:3) spa sp_area];
+               new_active_spots{end + 1} = numel(o.spots_history);
             end
 
         end
@@ -109,6 +122,7 @@ methods
         end
         
         o.time_point = o.time_point + 1;
+        o.active_spots = new_active_spots;
         
     end
 

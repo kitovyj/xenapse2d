@@ -34,6 +34,8 @@ properties
     stimulation_start = 1.0;
     temporal_averaging_alpha = 0.2;
     
+    min_life_time = 0.5;
+    
     spot_tracker = 0;
     
     viewed_frame_index = 1; 
@@ -42,7 +44,6 @@ properties
     spot_texts = {};
     
     loaded_file_name = 0;
-  
     views_colormap = jet;
     
     % gui controls
@@ -50,9 +51,11 @@ properties
     panel_top = 0;
     panel_top_separator = 0;
     panel_general = 0;
+    panel_display_settings = 0;
     panel_xenapse = 0;
 
     % general panel 
+    
     slider_frames = 0;
     button_prev = 0;
     button_next = 0;
@@ -65,11 +68,15 @@ properties
     
     checkbox_subtract_background = 0; 
     checkbox_temporal_averaging = 0;
-    
-    combobox_color_map = 0;
+   
+    % display settings
+
+    slider_display_threshold = 0;
     text_color_map_label = 0;      
+    combobox_color_map = 0;   
     
     % xenapse panel
+    
     slider_madwc = 0;
     
     panel_separator_xenapse_1st = 0;
@@ -109,11 +116,13 @@ methods
     end
     
     % destructor
+    
     function delete(o)
         %close(o.figure_id); 
     end  
     
     % create/rearrange ui contols
+    
     function arrange_controls(o)
                   
       figure(o.figure_id);
@@ -208,16 +217,10 @@ methods
       y = y - 30;
       panel_separator_general_2nd_position = [separator_margin, y, sep_width, 1 ];
       
-      x = panel_general_width - margin * 2; 
-      label_space = 2;
-      combobox_color_map_width = 80;
-      x = x - combobox_color_map_width;   
-      y = 50;
-      combobox_color_map_position = [x, y, combobox_color_map_width, 20];
-      text_color_map_label_width = 90;
-      x = x - text_color_map_label_width - label_space;
-      text_color_map_label_position = [x, y, text_color_map_label_width, 18];
-      
+      panel_display_settings_width = 230;
+      panel_display_settings_position = [panel_general_width - panel_display_settings_width, 51, ... 
+                                         panel_display_settings_width, 23];
+            
       if o.panel_general == 0
           
         o.panel_general = uipanel('Parent', o.panel_top, 'Title', '', 'Units', 'Pixels', 'Position', ...
@@ -289,16 +292,23 @@ methods
         y = top_y;
         
         label_width = 80;
-        text_width = 30;
+        text_width = 40;
         
         text_frame_rate_label = uicontrol('Parent', o.panel_general, 'Style', 'text', 'String', 'Frame rate, Hz:', ...
           'Position', [x, y, label_width, 20], 'HorizontalAlignment', 'left');        
         px = x + label_width + label_space;       
-        text_frame_rate_width = text_width;
-        frame_rate_str = num2str(o.frame_rate);
-        text_frame_rate = uicontrol('Parent', o.panel_general, 'Style', 'text', 'String', frame_rate_str, ...
-          'Position', [px, y, text_width, 20], 'HorizontalAlignment', 'left');          
-      
+        
+        combobox_frame_rate_width = 40;
+        combobox_frame_rate_position = [px, y + 3, combobox_frame_rate_width, 20];
+       
+        frame_rates = { '20', '100' };
+                    
+        selection = 1;
+        o.frame_rate = str2num(frame_rates{selection});
+        
+        combobox_frame_rate = uicontrol(o.panel_general, 'Style', 'popupmenu', 'String', frame_rates, ...
+          'Enable', 'on', 'Position', combobox_frame_rate_position, 'Callback', @o.on_combobox_frame_rate_changed, ...
+          'Value', selection);            
         y = y - 15;
 
         text_pixel_size_label = uicontrol('Parent', o.panel_general, 'Style', 'text', 'String', 'Pixel size, nm:', ...
@@ -309,11 +319,11 @@ methods
         text_pixel_size = uicontrol('Parent', o.panel_general, 'Style', 'text', 'String', pixel_size_str, ...
           'Position', [px, y, text_pixel_size_width, 20], 'HorizontalAlignment', 'left');        
         
-        label_width = 70;
-        text_width = 30;
-        
         x = x + label_width + label_space + text_width + space;
         y = top_y;
+        
+        label_width = 70;
+        text_width = 30;
         
         text_stimulation_start_label = uicontrol('Parent', o.panel_general, 'Style', 'text', 'String', 'Stim. start, s:', ...
           'Position', [x, y, label_width, 20], 'HorizontalAlignment', 'right');       
@@ -351,20 +361,59 @@ methods
           'Enable', 'on', 'Position', [x, y, edit_temporal_averaging_width, 20], 'Callback', @o.on_edit_temporal_averaging_changed);      
       
         x = x + edit_temporal_averaging_width + space;
-              
+
+        % panel display settings
+        
+        o.panel_display_settings = uipanel('Parent', o.panel_general, 'Title', '', 'Units', 'Pixels', 'Position', ...
+          panel_display_settings_position, 'Visible', 'on', 'BorderType', 'none');
+      
+        label_space = 2;
+        x = 0; 
+        y = 0;
+
+        text_display_threshold_label_width = 50;
+        text_display_threshold_label_position = [x, y, text_display_threshold_label_width, 18];
+
+        text_display_threshold_label = uicontrol('Parent', o.panel_display_settings, 'Style', 'text', 'String', "Thresh.:", ...
+          'Position', text_display_threshold_label_position, 'HorizontalAlignment', 'right');        
+
+        x = x + text_display_threshold_label_width + label_space;
+
+        slider_max = 100;
+        slider_min = 0;
+        slider_width = 50;
+        slider_position = [x, y, slider_width, 20];
+            
+        jSlider = javax.swing.JSlider;
+        [jSlider, hContainer] = javacomponent(jSlider, slider_position, o.panel_display_settings);
+        o.slider_display_threshold = {jSlider, hContainer};
+        set(o.slider_display_threshold{1}, 'MajorTickSpacing', 10, 'PaintTicks', true, 'PaintLabels', false);
+        set(o.slider_display_threshold{1}, 'Value', 100, 'Minimum', slider_min, 'Maximum', slider_max);
+        set(o.slider_display_threshold{1}, 'StateChangedCallback', @o.on_slider_display_threshold_changed);
+       
+        x = x + slider_width + label_space;        
+        
+        text_color_map_label_width = 35;
+        text_color_map_label_position = [x, y, text_color_map_label_width, 18];
+
+        o.text_color_map_label = uicontrol('Parent', o.panel_display_settings, 'Style', 'text', 'String', "Color map:", ...
+          'Position', text_color_map_label_position, 'HorizontalAlignment', 'right');        
+
+        x = x + text_color_map_label_width + label_space;
+
+        combobox_color_map_width = 80;
+        combobox_color_map_position = [x, y, combobox_color_map_width, 20];
+       
         cmaps = {'parula', 'jet', 'hsv', 'hot', 'cool', 'spring', 'summer', ...
                  'autumn', 'winter', 'gray', 'bone', 'copper', 'pink' };
                     
         selection = 2;
         o.views_colormap = cmaps{selection};
         
-        o.combobox_color_map = uicontrol(o.panel_general, 'Style', 'popupmenu', 'String', cmaps, ...
+        o.combobox_color_map = uicontrol(o.panel_display_settings, 'Style', 'popupmenu', 'String', cmaps, ...
           'Enable', 'on', 'Position', combobox_color_map_position, 'Callback', @o.on_combobox_color_map_changed, ...
           'Value', selection);      
-        o.text_color_map_label = uicontrol('Parent', o.panel_general, 'Style', 'text', 'String', "Color map:", ...
-          'Position', text_color_map_label_position, 'HorizontalAlignment', 'right');        
-        
-      
+              
       else
          
         set(o.panel_general, 'Position', panel_general_position); 
@@ -374,8 +423,7 @@ methods
         set(o.button_next, 'Position', button_next_position);  
         set(o.panel_separator_general_1st, 'Position', panel_separator_general_1st_position);  
         set(o.panel_separator_general_2nd, 'Position', panel_separator_general_2nd_position); 
-        set(o.combobox_color_map, 'Position', combobox_color_map_position); 
-        set(o.text_color_map_label, 'Position', text_color_map_label_position); 
+        set(o.panel_display_settings, 'Position', panel_display_settings_position); 
         
       end
       
@@ -436,7 +484,7 @@ methods
       
         text_wadc_label_width = 40;
         
-        text_wadc_label = uicontrol('Parent', o.panel_xenapse, 'Style', 'text', 'String', "WADC:", ...
+        text_wadc_label = uicontrol('Parent', o.panel_xenapse, 'Style', 'text', 'String', "MADC:", ...
           'Position', [x, y - 3, text_wadc_label_width, 20], 'HorizontalAlignment', 'left'); 
       
         x = x + text_wadc_label_width;
@@ -463,9 +511,11 @@ methods
       
     end 
     
+    % non-event methods
     
     function update_title(o)
-        title = strcat("Xenapse2D - ", o.loaded_file_name); 
+        [~, fn, ~] = fileparts(o.loaded_file_name);
+        title = strcat("Xenapse2D - ", fn); 
         set(o.figure_id, 'name', title);
     end
 
@@ -509,6 +559,19 @@ methods
     end
     
     % general events
+
+    function on_combobox_frame_rate_changed(o, combobox_object, ~)
+       
+       index = get(combobox_object, 'Value');
+       frame_rates = get(combobox_object, 'String');
+       o.frame_rate = str2num(frame_rates{index});
+        
+       o.update_duration_text();
+       o.prepare_processed_data();
+       o.update_general_view();
+       o.update_xenapse_view();
+
+    end
     
     function on_edit_temporal_averaging_changed(o, image_object, ~)
        o.prepare_processed_data();
@@ -558,6 +621,8 @@ methods
        
     end   
 
+    % display settings
+    
     function on_combobox_color_map_changed(o, ~, ~)
         index = get(o.combobox_color_map, 'Value');
         cms = get(o.combobox_color_map, 'String');
@@ -566,7 +631,13 @@ methods
         colormap(o.general_view_axes, o.views_colormap);
     end
 
-        
+    function on_slider_display_threshold_changed(o, ~, ~)
+        o.update_xenapse_view();
+        o.update_general_view();
+    end
+    
+    % frames navigation
+    
     function on_slider_frames_changed(o, slider_object, event_data)
         
         value = round(get(slider_object, 'Value'));
@@ -612,6 +683,8 @@ methods
         o.update_xenapse_view();
         o.update_general_view();
     end
+    
+    % file load
     
     function on_load_file(o, button_object, event_data) 
         
@@ -662,6 +735,14 @@ methods
     function r = get_do_track(o)
          r = get(o.checkbox_track, 'Value');
     end
+
+    function r = get_stim_start_frame(o) 
+        r = round(o.stimulation_start * o.frame_rate, 0);
+    end
+
+    function r = get_display_threshold(o)
+         r = get(o.slider_display_threshold{1}, 'Value') / 100.;
+    end
     
     function prepare_processed_data(o)
                 
@@ -679,9 +760,8 @@ methods
             o.data = o.original_data;
             
             for i = 2:size(o.original_data, 3)
-                frame = double(o.data(:, :, i));
-                frame = alpha * frame + (1.0 - alpha) * current;
-                current = frame;
+                frame = single(o.data(:, :, i));
+                current = alpha * frame + (1.0 - alpha) * current;
                 o.data(:, :, i) = current;
                 
                 p = single(i) / size(o.original_data, 3);
@@ -693,7 +773,7 @@ methods
                     
         end
      
-        stim_start_frame = o.stimulation_start * o.frame_rate;
+        stim_start_frame = o.get_stim_start_frame();
         if stim_start_frame ~= 0
             o.background = mean(o.data(:, :, 1:stim_start_frame), 3);
         else
@@ -701,7 +781,6 @@ methods
         end
         
     end
-    
     
     function update_selected_xenapse(o)
         
@@ -758,9 +837,10 @@ methods
             frame_data = frame_data - bg_data;
         end
         
-        frame_data_u8 = frame_data * 512;
-        frame_data_u8(frame_data_u8 > 255) = 255;
-        frame_data_u8 = uint8(frame_data_u8);
+        dt = o.get_display_threshold();        
+        frame_data_u8 = frame_data / dt;
+        frame_data_u8(frame_data_u8 > 1) = 1;
+        frame_data_u8 = uint8(frame_data_u8 * 255);
                 
         axes(o.xenapse_view_axes);
         
@@ -848,10 +928,11 @@ methods
         if o.get_subtract_background() == 1
             frame_data = frame_data - o.background;
         end
-            
-        frame_data_u8 = frame_data * 512;
-        frame_data_u8(frame_data_u8 > 255) = 255;
-        frame_data_u8 = uint8(frame_data_u8);
+
+        dt = o.get_display_threshold();        
+        frame_data_u8 = frame_data / dt;
+        frame_data_u8(frame_data_u8 > 1) = 1;
+        frame_data_u8 = uint8(frame_data_u8 * 255);
 
         axes(o.general_view_axes);
 
@@ -872,7 +953,6 @@ methods
         
     end
     
-    
     function analyze_intensity_levels(o)
         
     end
@@ -885,14 +965,18 @@ methods
         o.selected_xenapse = 1;
         o.viewed_frame_index = 1;        
         
+        o.loaded_file_name = fn;
+        
+        o.update_title();
+        
         wait_bar = waitbar(0, 'Loading file...');
         
         info = imfinfo(fn);
         
-        data = zeros(info(1).Height, info(1).Width, numel(info));
+        data = zeros(info(1).Height, info(1).Width, numel(info), 'single');
         for i = 1:numel(info)
             frame = imread(fn, i);
-            data(:, :, i) = double(frame);
+            data(:, :, i) = single(frame);
             
             %data = cat(3, data, frame);
 
@@ -917,7 +1001,6 @@ methods
         o.xenapse_radii(:) = mean(o.xenapse_radii);
         o.xenapse_metric = metric;
         
-        data = double(data);            
         o.original_data = data;
         o.data = data;
         
@@ -934,44 +1017,31 @@ methods
         max_frames = size(o.data, 3);
         
         set(o.slider_frames{1}, 'Value', 1, 'Minimum', 1, 'Maximum', max_frames);   
-        
-        o.loaded_file_name = fn;
-        
-        o.update_title();
-            
+                    
         o.update_duration_text();         
         
     end
 
     function [spots_history, intensity] = analyze_xenapse(o, xenapse_index, waitbar_object, current_progress, total_work)
     
-        
         tracker = SpotTracker();     
         
-        stim_start_frame = round(o.stimulation_start * o.frame_rate, 0);        
+        stim_start_frame = o.get_stim_start_frame();
 
         rect = get_xenapse_rectangle(o, xenapse_index);
         rect = int32(rect);
         
-        current = double(o.data(:, :, stim_start_frame));
-        current = current(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
         bg = o.background(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
-
-        current = current - bg;
-
-        alpha = 0.2;
 
         intensity = [];
         
         for i = stim_start_frame:size(o.data, 3)
-            frame = double(o.data(:, :, i));
+
+            frame = single(o.data(:, :, i));
             frame = frame(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
             frame = frame - bg;
 
             intensity = [intensity mean(mean(frame))]; 
-            
-            frame = alpha * frame + (1.0 - alpha) * current;
-            current = frame;
             
             tracker.track(frame);
             
@@ -993,6 +1063,7 @@ methods
         md = median(data);
         stdv = std(data);
         % Create the labels
+        n = sprintf('N: %d', numel(data));
         minlabel = sprintf('Min: %g', dmin);
         maxlabel = sprintf('Max: %g', dmax);
         mnlabel = sprintf('Mean: %g', mn);
@@ -1000,15 +1071,15 @@ methods
         stdlabel = sprintf('Std Deviation: %g', stdv);
         % Create the textbox
         h = annotation('textbox', [0.58 0.75 0.1 0.1]);
-        set(h,'String', { minlabel, maxlabel, mnlabel, mdlabel, stdlabel });        
+        set(h,'String', { n, minlabel, maxlabel, mnlabel, mdlabel, stdlabel });        
         
     end    
     
     function analyze_xenapses(o, indices)
 
         wait_bar = waitbar(0, 'Analyzing spots...');
-        stim_start_frame = round(o.stimulation_start * o.frame_rate, 0);        
-        total_frames_to_analyze = size(o.data, 3) - stim_start_frame;
+        stim_start_frame = o.get_stim_start_frame();        
+        total_frames_to_analyze = size(o.data, 3) - stim_start_frame + 1;
         total_work = total_frames_to_analyze * numel(indices);
         current_progress = 1;
         
@@ -1016,8 +1087,8 @@ methods
         displacements = [];
         
         intensities = [];
-          
-        
+        latencies = [];
+              
         for k = 1:numel(indices)
             
             xi = indices(k);
@@ -1031,7 +1102,17 @@ methods
             for i = 1:numel(spots_history)
                 sph = spots_history{i};
 
-                life_time = sph(end, 1) - sph(1, 1);
+                latency = sph(1, 1);
+ 
+                life_time = sph(end, 1) - sph(1, 1) + 1;
+                life_time_s = single(life_time) / o.frame_rate;  
+                
+                if life_time_s < o.min_life_time
+                    continue
+                end
+                    
+                
+                latencies = [latencies latency];
                 
                 %{
                 if life_time < 3
@@ -1056,20 +1137,30 @@ methods
 
         close(wait_bar);
         
+        [~, fn, ~] = fileparts(o.loaded_file_name);
+        
         f = figure;
-        set(f, 'name', ['Life time - ' o.loaded_file_name], 'NumberTitle', 'off');
+        set(f, 'name', ['Life time - ' fn], 'NumberTitle', 'off');
+        life_times = single(life_times) / o.frame_rate;        
         h = histogram(life_times, 'FaceColor', 'g');
         o.set_plot_annotation(life_times);
         
         f = figure;
-        set(f, 'name', ['Motility - ' o.loaded_file_name], 'NumberTitle', 'off');
+        set(f, 'name', ['Motility - ' fn], 'NumberTitle', 'off');
         h = histogram(displacements, 'FaceColor', 'r');
         o.set_plot_annotation(displacements);
       
         f = figure;
-        set(f, 'name', ['Intensity - ' o.loaded_file_name], 'NumberTitle', 'off');        
+        set(f, 'name', ['Intensity - ' fn], 'NumberTitle', 'off');        
         intensities = mean(intensities, 1);
-        plot(intensities);
+        time_line = o.stimulation_start + single([1:total_frames_to_analyze]) / o.frame_rate;
+        plot(time_line, intensities);
+        
+        f = figure;
+        set(f, 'name', ['Latency - ' fn], 'NumberTitle', 'off');
+        latencies = single(latencies) / o.frame_rate;        
+        h = histogram(latencies, 'FaceColor', 'c');
+        o.set_plot_annotation(latencies);
         
     end
     
