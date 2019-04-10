@@ -1129,6 +1129,8 @@ methods
         t = total_mean;
         %t(t < mean_value) = 0;
         
+        t = o.lowpass_wavelet_filter(t);
+        
         level = graythresh(t);
         BW = imbinarize(t,level);
         BW = imfill(BW,'holes');
