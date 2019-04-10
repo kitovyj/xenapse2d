@@ -1,4 +1,4 @@
-function [spots,spotsAmp,ld, spotsArea]=waveletSpots(img, opts, madwc)
+function [spots,spotsAmp,ld, spotsArea, P]=waveletSpots(img, opts, madwc)
 % Find spots using multiscale product wavelet transform.
 %
 % See: J. C. Olivo-Marin, Pattern Recognition 35 (2002) 1989-1996 and

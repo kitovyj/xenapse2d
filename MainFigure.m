@@ -31,7 +31,8 @@ properties
     background = 0;
     frame_rate = 20;
     pixel_size = 160;
-    stimulation_start = 1.0;
+    %stimulation_start = 0.5;
+    stimulation_start = 0.0;    
     temporal_averaging_alpha = 0.2;
     
     min_life_time = 0.5;
@@ -45,6 +46,8 @@ properties
     
     loaded_file_name = 0;
     views_colormap = jet;
+ 
+    min_value = 0;
     
     % gui controls
     
@@ -68,6 +71,7 @@ properties
     
     checkbox_subtract_background = 0; 
     checkbox_temporal_averaging = 0;
+    checkbox_lowpass_wavelet = 0;
    
     % display settings
 
@@ -83,7 +87,8 @@ properties
     panel_separator_xenapse_2nd = 0;
     
     checkbox_track = 0;
-          
+    checkbox_show_detected_spots = 0;
+
 end
     
 methods
@@ -109,9 +114,9 @@ methods
         
         o.arrange_controls();
         
-        o.load('AVG_MDA_6 50Ap 20hz cont_MMStack_Pos0.ome.tif');
-        
-        
+        %o.load('AVG_MDA_6 50Ap 20hz cont_MMStack_Pos0.ome.tif');
+        o.load('c:\projects\xenapse2d\Dynamin\Dynamin single pulse latency analysis Baseline 50frame 100hz acqusition\37_CMOS\0125\2\MDA_1 1Ap\MDA_1 1Ap_MMStack_Pos0.ome.tif')
+        %o.load('c:\projects\xenapse2d\Dynamin\Dynamin single pulse latency analysis Baseline 50frame 100hz acqusition\Test analysis\0121\1_37c\MD-5 bleach ctrl\MD-5 bleach ctrl_MMStack_Pos0.ome.tif')
         
     end
     
@@ -303,7 +308,7 @@ methods
        
         frame_rates = { '20', '100' };
                     
-        selection = 1;
+        selection = 2;
         o.frame_rate = str2num(frame_rates{selection});
         
         combobox_frame_rate = uicontrol(o.panel_general, 'Style', 'popupmenu', 'String', frame_rates, ...
@@ -325,11 +330,12 @@ methods
         label_width = 70;
         text_width = 30;
         
+        ss_str = num2str(o.stimulation_start, '%.2f');
         text_stimulation_start_label = uicontrol('Parent', o.panel_general, 'Style', 'text', 'String', 'Stim. start, s:', ...
           'Position', [x, y, label_width, 20], 'HorizontalAlignment', 'right');       
         px = x + label_width + label_space;
         text_duration_width = label_width;        
-        text_stimulation_start = uicontrol('Parent', o.panel_general, 'Style', 'text', 'String', '1', ...
+        text_stimulation_start = uicontrol('Parent', o.panel_general, 'Style', 'text', 'String', ss_str, ...
           'Position', [px, y, text_width, 20], 'HorizontalAlignment', 'left');          
  
         y = y - 15;
@@ -344,7 +350,7 @@ methods
         checkbox_subtract_background_width = 120;
         
         o.checkbox_subtract_background = uicontrol('Parent', o.panel_general, 'Style', 'checkbox', 'String', ' Subtract background', ...
-          'Position', [x, y, checkbox_subtract_background_width, 20], 'Value', 1, ...
+          'Position', [x, y, checkbox_subtract_background_width, 20], 'Value', 0, ...
           'Callback', @o.on_checkbox_subtract_background_clicked);  
     
         x = x + space + checkbox_subtract_background_width;
@@ -362,6 +368,13 @@ methods
       
         x = x + edit_temporal_averaging_width + space;
 
+        checkbox_lowpass_wavelet_width = 120;
+        
+        o.checkbox_lowpass_wavelet = uicontrol('Parent', o.panel_general, 'Style', 'checkbox', 'String', ' Lowpass wl filter', ...
+          'Position', [x, y, checkbox_lowpass_wavelet_width, 20], 'Value', 1, ...
+          'Callback', @o.on_checkbox_lowpass_wavelet_clicked);      
+      
+        x = x + space + checkbox_lowpass_wavelet_width        
         % panel display settings
         
         o.panel_display_settings = uipanel('Parent', o.panel_general, 'Title', '', 'Units', 'Pixels', 'Position', ...
@@ -379,7 +392,7 @@ methods
 
         x = x + text_display_threshold_label_width + label_space;
 
-        slider_max = 100;
+        slider_max = 300;
         slider_min = 0;
         slider_width = 50;
         slider_position = [x, y, slider_width, 20];
@@ -407,7 +420,7 @@ methods
         cmaps = {'parula', 'jet', 'hsv', 'hot', 'cool', 'spring', 'summer', ...
                  'autumn', 'winter', 'gray', 'bone', 'copper', 'pink' };
                     
-        selection = 2;
+        selection = 10; % gray
         o.views_colormap = cmaps{selection};
         
         o.combobox_color_map = uicontrol(o.panel_display_settings, 'Style', 'popupmenu', 'String', cmaps, ...
@@ -478,6 +491,14 @@ methods
         o.checkbox_track = uicontrol('Parent', o.panel_xenapse, 'Style', 'checkbox', 'String', ' Track', ...
           'Position', [x, y, checkbox_track_width, 20], 'Value', 0, ...
           'Callback', @o.on_checkbox_track_clicked);      
+
+        x = x + checkbox_track_width + space;      
+      
+        checkbox_show_detected_spots_width = 120;    
+        
+        o.checkbox_show_detected_spots = uicontrol('Parent', o.panel_xenapse, 'Style', 'checkbox', 'String', ' Show detected spots', ...
+          'Position', [x, y, checkbox_show_detected_spots_width, 20], 'Value', 1, ...
+          'Callback', @o.on_checkbox_show_detected_spots_clicked);      
       
         x = 15;
         y = 15;
@@ -500,7 +521,7 @@ methods
         set(o.slider_madwc{1}, 'MajorTickSpacing', 100, 'PaintTicks', true, 'PaintLabels', false);
         set(o.slider_madwc{1}, 'Value', o.spot_tracker.madwc * 100, 'Minimum', slider_min, 'Maximum', slider_max);
         set(o.slider_madwc{1}, 'StateChangedCallback', @o.on_slider_madwc_changed);
-      
+        
       else
          
         set(o.panel_xenapse, 'Position', panel_xenapse_position); 
@@ -591,6 +612,11 @@ methods
        o.update_xenapse_view();
     end
     
+    function on_checkbox_lowpass_wavelet_clicked(o, image_object, ~)
+       o.update_general_view();
+       o.update_xenapse_view();
+    end
+    
     function on_general_view_image_clicked(o, image_object, ~)
 
        axes  = get(image_object, 'Parent');
@@ -652,7 +678,7 @@ methods
         o.viewed_frame_index = value;
         
         o.update_current_frame_text();
-        o.update_xenapse_view();
+        %o.update_xenapse_view();
         o.update_general_view();
         
     end
@@ -717,6 +743,12 @@ methods
         
         
     end
+    
+    function on_checkbox_show_detected_spots_clicked(o, checkbox_object, event_data)
+ 
+        o.update_xenapse_view();
+        
+    end
         
     function on_analyze_single(o, button_object, event_data)
         o.analyze_xenapses([o.selected_xenapse]);
@@ -732,8 +764,16 @@ methods
          r = get(o.checkbox_subtract_background, 'Value');
     end
 
+    function r = get_do_lowpass_filtering(o)
+         r = get(o.checkbox_lowpass_wavelet, 'Value');
+    end
+    
     function r = get_do_track(o)
          r = get(o.checkbox_track, 'Value');
+    end
+    
+    function r = get_show_detected_spots(o)
+         r = get(o.checkbox_show_detected_spots, 'Value');
     end
 
     function r = get_stim_start_frame(o) 
@@ -744,9 +784,32 @@ methods
          r = get(o.slider_display_threshold{1}, 'Value') / 100.;
     end
     
+    function r = lowpass_wavelet_filter(o, image)
+       
+        r = imgaussfilt(image, 1.0);
+        
+        %{
+        total_levels = 2;
+        level = 1;
+        n = prod( size(image) );
+        Ib = image;
+        [C,S] = wavedec2(Ib,total_levels,'bior3.7');
+        DH = detcoef2('all',C,S,level);% extract details coefficient from level 1
+        DH = DH(:);
+        delta = median( abs(DH) ) / 0.6745;
+        %delta = median( abs(DH) ) / 0.0001;
+        thr = delta * sqrt(2*log(n));
+        NC = wthcoef2('t',C,S,level,thr,'s'); % i use the soft threshold
+        r = waverec2(NC, S, 'bior3.7');
+        %}
+        
+    end
+        
+    
     function prepare_processed_data(o)
                 
         ta = get(o.checkbox_temporal_averaging, 'Value');
+        %ta = 0;
         
         if ta == 0
             o.data = o.original_data;
@@ -761,9 +824,8 @@ methods
             
             for i = 2:size(o.original_data, 3)
                 frame = single(o.data(:, :, i));
-                current = alpha * frame + (1.0 - alpha) * current;
+                current = alpha * frame + (1.0 - alpha) * current;  
                 o.data(:, :, i) = current;
-                
                 p = single(i) / size(o.original_data, 3);
                 waitbar(p, wait_bar);
                 
@@ -776,9 +838,40 @@ methods
         stim_start_frame = o.get_stim_start_frame();
         if stim_start_frame ~= 0
             o.background = mean(o.data(:, :, 1:stim_start_frame), 3);
+            
+            
+            minimum_values = min(o.data, [], 3);
+                     
+            o.min_value = min(min(minimum_values - o.background));
+            
+            %o.min_value = 0; 
+            
+            %o.background = mean(o.data(:, :, :), 3);
         else
             o.background = zeros(size(o.data, 1), size(o.data, 2));
         end
+    
+        %{
+        for i = 1:size(o.data, 3)
+    
+            frame_data = o.data(:, :, i);
+            frame_data = frame_data - o.background;
+            if o.min_value < 0
+                frame_data = frame_data - o.min_value;
+            end
+            
+            frame_data = uint16(frame_data);
+        
+            if i == 1
+                imwrite(frame_data, 'out_ctrl.tif')
+            else
+                imwrite(frame_data, 'out_ctrl.tif', 'WriteMode', 'append')
+            end
+            
+        end
+        %}
+        
+
         
     end
     
@@ -820,6 +913,10 @@ methods
         rs = radius * 2 * o.xenapse_size_extension;
         hs = rs / 2;
        
+        %max_x = size(o.data, 2)
+        %max_y = size(o.data, 1)
+        %r = [max(center(1) - hs, 0) max(center(2) - hs, 0) min(rs, max_x) min(rs, max_];
+        
         r = [center(1) - hs center(2) - hs rs rs];
         
     end
@@ -835,13 +932,45 @@ methods
         
         if o.get_subtract_background() == 1
             frame_data = frame_data - bg_data;
+            if o.min_value < 0
+                frame_data = frame_data - o.min_value;
+            end
+        end
+
+        if o.get_do_lowpass_filtering() == 1
+            
+            frame_data = o.lowpass_wavelet_filter(frame_data);
+            
+        end
+            
+                
+        madwc = round(get(o.slider_madwc{1}, 'Value')) / 100.;
+        o.spot_tracker.madwc = madwc;
+
+       
+        if o.get_do_track()
+            
+            [spots, regions] = o.spot_tracker.track(frame_data);        
+                    
+        else
+            
+            [spots, regions] = o.spot_tracker.detect_spots(frame_data);
+            
+        end
+        
+        if o.get_show_detected_spots()
+                        
+            frame_data(regions == 0) = 0.0;
+                        
         end
         
         dt = o.get_display_threshold();        
         frame_data_u8 = frame_data / dt;
         frame_data_u8(frame_data_u8 > 1) = 1;
         frame_data_u8 = uint8(frame_data_u8 * 255);
-                
+            
+        % update image data 
+        
         axes(o.xenapse_view_axes);
         
         if o.xenapse_view_image_initialized
@@ -852,55 +981,48 @@ methods
             
             delete(o.xenapse_view_image);
             o.xenapse_view_image = imshow(frame_data_u8); 
+            %caxis(o.xenapse_view_axes, [0 1]);
             colormap(o.xenapse_view_axes, o.views_colormap);
             % 'CDataMapping', 'scaled'
             o.xenapse_view_image_initialized = 1;
             
         end
-
-        madwc = round(get(o.slider_madwc{1}, 'Value')) / 100.;
-        o.spot_tracker.madwc = madwc;
-
-       
-        if o.get_do_track()
-            
-            spots = o.spot_tracker.track(frame_data);        
-                    
-        else
-            
-            spots = o.spot_tracker.detect_spots(frame_data);
-            
-        end
+        
         
         % id y x amplitude area
         
         new_spot_circles = {};
         new_spot_texts = {};
         
-        for spi = 1:numel(spots)
-            
-            s = spots{spi};
-            
-            p = s(2:3);
-            area = s(5);
-            id = s(1);
-            
-            y = p(1);
-            x = p(2);
+        if o.get_show_detected_spots()
+        
+            for spi = 1:numel(spots)
 
-            r = sqrt(area / 3.14);
+                s = spots{spi};
 
-            c = draw_circle(x, y, r);
+                p = s(2:3);
+                area = s(5);
+                id = s(1);
+
+                x = p(1);
+                y = p(2);
+
+                r = sqrt(area / 3.14);
+
+                %c = draw_circle(x, y, r);
+                %new_spot_circles{spi} = c;
+                
+                if o.get_do_track()
+                    t = text(x, y, num2str(id), 'Color', 'black', 'HorizontalAlignment', 'center', 'BackgroundColor', [1, 1, 1, 0.5], ...
+                        'EdgeColor', [0, 0, 0, 0.5]);
+                    new_spot_texts{spi} = t;
+                end    
+
+
+
+            end
             
-            if o.get_do_track()
-                t = text(x, y - 2*r, num2str(id), 'Color', 'black', 'HorizontalAlignment', 'center', 'BackgroundColor', [1, 1, 1, 0.5], ...
-                    'EdgeColor', [0, 0, 0, 0.5]);
-                new_spot_texts{spi} = t;
-            end    
-            
-            new_spot_circles{spi} = c;
-            
-        end      
+        end
         
         cellfun(@delete, o.spot_circles)        
         cellfun(@delete, o.spot_texts)
@@ -927,8 +1049,18 @@ methods
 
         if o.get_subtract_background() == 1
             frame_data = frame_data - o.background;
+            if o.min_value < 0
+                frame_data = frame_data - o.min_value;
+            end
+
         end
 
+        if o.get_do_lowpass_filtering() == 1
+            
+            frame_data = o.lowpass_wavelet_filter(frame_data);
+            
+        end
+        
         dt = o.get_display_threshold();        
         frame_data_u8 = frame_data / dt;
         frame_data_u8(frame_data_u8 > 1) = 1;
@@ -946,6 +1078,7 @@ methods
             o.general_view_image = imshow(frame_data_u8); 
             set(o.general_view_image, 'ButtonDownFcn', @o.on_general_view_image_clicked); 
             colormap(o.general_view_axes, o.views_colormap);
+            % caxis(o.general_view_axes, [0 1]);
             % 'CDataMapping', 'scaled'
             o.general_view_image_initialized = 1;
 
@@ -991,15 +1124,84 @@ methods
         
         total_mean = mean(data(:, :, :), 3);
         
+        mean_value = mean(mean(total_mean));
+        
+        t = total_mean;
+        %t(t < mean_value) = 0;
+        
+        level = graythresh(t);
+        BW = imbinarize(t,level);
+        BW = imfill(BW,'holes');
+        BW = bwconvhull(BW,'objects');
+        BW = imfill(BW,'holes');
+        CC = bwconncomp(BW);
+        S = regionprops(CC,'Centroid');
+        ma = regionprops(CC,'MajorAxisLength');
+      
+        centers = [];
+        radii = [];
+        
+        for i = 1:numel(S)
+            
+            s = S(i);
+            s = s.Centroid;
+            
+            m = ma(i);
+            m = m.MajorAxisLength;
+            
+            if m < 20
+                continue;
+            end
+            
+            centers = [centers; s];
+            radii = [radii; (m / 2)];
+                            
+        end
+        
+        %figure;
+        %imshow(BW);
+      
+        %{
+        total_levels = 2;
+        level = 1;
+        n = prod( size(total_mean) );
+        Ib = total_mean;
+        [C,S] = wavedec2(Ib,total_levels,'bior3.7');
+        DH = detcoef2('all',C,S,level);% extract details coefficient from level 1
+        DH = DH(:);
+        delta = median( abs(DH) ) / 0.6745;
+        %delta = median( abs(DH) ) / 0.0001;
+        thr = delta * sqrt(2*log(n));
+        NC = wthcoef2('t',C,S,level,thr,'s'); % i use the soft threshold
+        X = waverec2(NC, S, 'bior3.7');
+        %figure;
+        %imagesc(Ib); title('Noisy Image'); colormap gray;
+        %figure;
+        %imagesc(X); title('Denoised 1st level coeffs'); colormap gray;        
+        
+        
+        mean_value = mean(mean(X));
+        
+        t = X;
+        %t(t < mean_value*1) = 0;
+        
+        figure;
+        imshow(t);
+        
+        %}
+        
+        
+        
         %data = data / (2^(depth - 8));
        
         %set(o.general_view_axes, 'Visible', 'off'); % imagesc makes axes visible again!       
         
-        [centers, radii, metric] = imfindcircles(total_mean, [7 22], 'ObjectPolarity', 'bright');
+        %[centers, radii, metric] = imfindcircles(total_mean, [7 22], 'ObjectPolarity', 'bright');
+        %[centers, radii, metric] = imfindcircles(total_mean, [7 22], 'ObjectPolarity', 'bright');
         o.xenapse_centers = centers; 
         o.xenapse_radii = radii;
         o.xenapse_radii(:) = mean(o.xenapse_radii);
-        o.xenapse_metric = metric;
+        %o.xenapse_metric = metric;
         
         o.original_data = data;
         o.data = data;
@@ -1039,8 +1241,20 @@ methods
 
             frame = single(o.data(:, :, i));
             frame = frame(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
-            frame = frame - bg;
 
+            if o.get_subtract_background() == 1
+
+                frame = frame - bg;
+                %frame = frame + 1;
+
+            end
+                
+            if o.get_do_lowpass_filtering() == 1
+
+                frame = o.lowpass_wavelet_filter(frame);
+
+            end
+            
             intensity = [intensity mean(mean(frame))]; 
             
             tracker.track(frame);
@@ -1077,7 +1291,7 @@ methods
     
     function analyze_xenapses(o, indices)
 
-        wait_bar = waitbar(0, 'Analyzing spots...');
+        wait_bar = waitbar(0, 'Analyzing events...');
         stim_start_frame = o.get_stim_start_frame();        
         total_frames_to_analyze = size(o.data, 3) - stim_start_frame + 1;
         total_work = total_frames_to_analyze * numel(indices);
@@ -1100,6 +1314,7 @@ methods
             intensities = [intensities; intensity];
             
             for i = 1:numel(spots_history)
+                
                 sph = spots_history{i};
 
                 latency = sph(1, 1);
@@ -1110,8 +1325,7 @@ methods
                 if life_time_s < o.min_life_time
                     continue
                 end
-                    
-                
+                                  
                 latencies = [latencies latency];
                 
                 %{
@@ -1131,6 +1345,7 @@ methods
                     end
                 end
                 displacements = [displacements max_displacement];
+                
             end
                         
         end
