@@ -29,10 +29,11 @@ properties
     original_data = 0;
     data = 0;
     background = 0;
-    frame_rate = 20;
+    frame_rate = 100;
     pixel_size = 160;
     %stimulation_start = 0.5;
-    stimulation_start = 0.0;    
+    %stimulation_start = 0.0;  
+    stimulation_start = 0.5;     
     temporal_averaging_alpha = 0.2;
     
     min_life_time = 0.5;
@@ -115,8 +116,9 @@ methods
         o.arrange_controls();
         
         %o.load('AVG_MDA_6 50Ap 20hz cont_MMStack_Pos0.ome.tif');
-        o.load('c:\projects\xenapse2d\Dynamin\Dynamin single pulse latency analysis Baseline 50frame 100hz acqusition\37_CMOS\0125\2\MDA_1 1Ap\MDA_1 1Ap_MMStack_Pos0.ome.tif')
-        %o.load('c:\projects\xenapse2d\Dynamin\Dynamin single pulse latency analysis Baseline 50frame 100hz acqusition\Test analysis\0121\1_37c\MD-5 bleach ctrl\MD-5 bleach ctrl_MMStack_Pos0.ome.tif')
+        %o.load('Dynamin\Dynamin single pulse latency analysis Baseline 50frame 100hz acqusition\37_CMOS\0125\2\MDA_1 1Ap\MDA_1 1Ap_MMStack_Pos0.ome.tif')
+        %o.load('Dynamin\Dynamin single pulse latency analysis Baseline 50frame 100hz acqusition\Test analysis\0121\1_37c\MD-5 bleach ctrl\MD-5 bleach ctrl_MMStack_Pos0.ome.tif');
+        o.load('Dynamin\Dynamin single pulse latency analysis Baseline 50frame 100hz acqusition\Test analysis\0121\1_37c\MDA_3 5Ap 100hz\MDA_3 5Ap 100hz_MMStack_Pos0.ome.tif');
         
     end
     
@@ -510,7 +512,7 @@ methods
       
         x = x + text_wadc_label_width;
       
-        slider_max = 500;
+        slider_max = 50000;
         slider_min = 0;
         slider_width = 80;
         slider_position = [x, y, slider_width, 20];
@@ -519,7 +521,8 @@ methods
         [jSlider, hContainer] = javacomponent(jSlider, slider_position, o.panel_xenapse);
         o.slider_madwc = {jSlider, hContainer};
         set(o.slider_madwc{1}, 'MajorTickSpacing', 100, 'PaintTicks', true, 'PaintLabels', false);
-        set(o.slider_madwc{1}, 'Value', o.spot_tracker.madwc * 100, 'Minimum', slider_min, 'Maximum', slider_max);
+        set(o.slider_madwc{1}, 'Minimum', slider_min, 'Maximum', slider_max);
+        set(o.slider_madwc{1}, 'Value', o.spot_tracker.madwc * 10000);
         set(o.slider_madwc{1}, 'StateChangedCallback', @o.on_slider_madwc_changed);
         
       else
@@ -678,7 +681,7 @@ methods
         o.viewed_frame_index = value;
         
         o.update_current_frame_text();
-        %o.update_xenapse_view();
+        o.update_xenapse_view();
         o.update_general_view();
         
     end
@@ -735,11 +738,11 @@ methods
         
         o.spot_tracker.clear_history();
         
-        if o.get_do_track() == 0
+        %if o.get_do_track() == 0
            
-            o.update_xenapse_view();
+        o.update_xenapse_view();
             
-        end
+        %end
         
         
     end
@@ -777,7 +780,7 @@ methods
     end
 
     function r = get_stim_start_frame(o) 
-        r = round(o.stimulation_start * o.frame_rate, 0);
+        r = round(o.stimulation_start * o.frame_rate + 1, 0);
     end
 
     function r = get_display_threshold(o)
@@ -786,9 +789,9 @@ methods
     
     function r = lowpass_wavelet_filter(o, image)
        
-        r = imgaussfilt(image, 1.0);
+        %r = imgaussfilt(image, 1.0);
         
-        %{
+        
         total_levels = 2;
         level = 1;
         n = prod( size(image) );
@@ -801,7 +804,7 @@ methods
         thr = delta * sqrt(2*log(n));
         NC = wthcoef2('t',C,S,level,thr,'s'); % i use the soft threshold
         r = waverec2(NC, S, 'bior3.7');
-        %}
+        
         
     end
         
@@ -837,8 +840,10 @@ methods
      
         stim_start_frame = o.get_stim_start_frame();
         if stim_start_frame ~= 0
-            o.background = mean(o.data(:, :, 1:stim_start_frame), 3);
             
+            %o.background = mean(o.data(:, :, 1:stim_start_frame), 3);
+            
+            o.background = mean(o.data(:, :, stim_start_frame), 3);
             
             minimum_values = min(o.data, [], 3);
                      
@@ -913,11 +918,14 @@ methods
         rs = radius * 2 * o.xenapse_size_extension;
         hs = rs / 2;
        
-        %max_x = size(o.data, 2)
-        %max_y = size(o.data, 1)
-        %r = [max(center(1) - hs, 0) max(center(2) - hs, 0) min(rs, max_x) min(rs, max_];
+        max_x = size(o.data, 1);
+        max_y = size(o.data, 2);
+        bottom = max(center(1) - hs, 1);
+        left = max(center(2) - hs, 1);
         
-        r = [center(1) - hs center(2) - hs rs rs];
+        r = [bottom left min(rs, max_y - bottom) min(rs, max_x - left) ];
+        
+        %r = [center(1) - hs center(2) - hs rs rs];
         
     end
     
@@ -944,9 +952,8 @@ methods
         end
             
                 
-        madwc = round(get(o.slider_madwc{1}, 'Value')) / 100.;
+        madwc = get(o.slider_madwc{1}, 'Value') / 10000.;
         o.spot_tracker.madwc = madwc;
-
        
         if o.get_do_track()
             
@@ -988,6 +995,9 @@ methods
             
         end
         
+        if o.get_do_track()
+            disp(o.spot_tracker.spots_history{6});
+        end
         
         % id y x amplitude area
         
@@ -1129,11 +1139,15 @@ methods
         t = total_mean;
         %t(t < mean_value) = 0;
         
-        t = o.lowpass_wavelet_filter(t);
+        %t = o.lowpass_wavelet_filter(t);
         
         level = graythresh(t);
         BW = imbinarize(t,level);
         BW = imfill(BW,'holes');
+        
+        se = strel('disk',5);
+        BW = imopen(BW, se);
+        
         BW = bwconvhull(BW,'objects');
         BW = imfill(BW,'holes');
         CC = bwconncomp(BW);
@@ -1230,28 +1244,36 @@ methods
     
         tracker = SpotTracker();     
         
-        stim_start_frame = o.get_stim_start_frame();
-
+        subtract_background = o.get_subtract_background();
         rect = get_xenapse_rectangle(o, xenapse_index);
         rect = int32(rect);
-        
-        bg = o.background(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
-
+                
+        if subtract_background
+            start_frame = o.get_stim_start_frame();
+            bg = o.background(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
+        else
+            start_frame = 1;
+        end
+                    
         intensity = [];
         
-        for i = stim_start_frame:size(o.data, 3)
+        lowpass_filtering = o.get_do_lowpass_filtering();
+        madwc = get(o.slider_madwc{1}, 'Value') / 10000.;
+        tracker.madwc = madwc;
+        
+        for i = start_frame:size(o.data, 3)
 
             frame = single(o.data(:, :, i));
             frame = frame(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
 
-            if o.get_subtract_background() == 1
+            if subtract_background == 1
 
                 frame = frame - bg;
                 %frame = frame + 1;
 
             end
                 
-            if o.get_do_lowpass_filtering() == 1
+            if lowpass_filtering == 1
 
                 frame = o.lowpass_wavelet_filter(frame);
 
@@ -1259,7 +1281,12 @@ methods
             
             intensity = [intensity mean(mean(frame))]; 
             
-            tracker.track(frame);
+            
+            if o.get_do_track()    
+                tracker.track(frame);
+            end
+            
+            %disp(tracker.spots_history{6});            
             
             waitbar(single(current_progress) / total_work, waitbar_object);
             current_progress = current_progress + 1;
@@ -1267,7 +1294,7 @@ methods
         end
         
         spots_history = tracker.spots_history;
-
+        
     end 
     
     function set_plot_annotation(o, data)
@@ -1294,8 +1321,14 @@ methods
     function analyze_xenapses(o, indices)
 
         wait_bar = waitbar(0, 'Analyzing events...');
-        stim_start_frame = o.get_stim_start_frame();        
-        total_frames_to_analyze = size(o.data, 3) - stim_start_frame + 1;
+
+        if o.get_subtract_background()
+            start_frame = o.get_stim_start_frame();
+        else
+            start_frame = 1;
+        end
+        
+        total_frames_to_analyze = size(o.data, 3) - start_frame + 1;
         total_work = total_frames_to_analyze * numel(indices);
         current_progress = 1;
         
@@ -1304,13 +1337,17 @@ methods
         
         intensities = [];
         latencies = [];
-              
+
+        all_spots_history = {};
+        
         for k = 1:numel(indices)
             
             xi = indices(k);
             
             [spots_history, intensity] = o.analyze_xenapse(xi, wait_bar, current_progress, total_work);
            
+            all_spots_history{end + 1} = spots_history;
+            
             current_progress = current_progress + total_frames_to_analyze;
 
             intensities = [intensities; intensity];
@@ -1323,6 +1360,13 @@ methods
  
                 life_time = sph(end, 1) - sph(1, 1) + 1;
                 life_time_s = single(life_time) / o.frame_rate;  
+                
+                %o.min_life_time = 0;
+
+                %disp(sph(1, 1));
+                %disp(sph(end, 1));
+                %disp(i);
+                %disp(life_time_s);
                 
                 if life_time_s < o.min_life_time
                     continue
@@ -1353,31 +1397,37 @@ methods
         end
 
         close(wait_bar);
-        
+
         [~, fn, ~] = fileparts(o.loaded_file_name);
-        
-        f = figure;
-        set(f, 'name', ['Life time - ' fn], 'NumberTitle', 'off');
-        life_times = single(life_times) / o.frame_rate;        
-        h = histogram(life_times, 'FaceColor', 'g');
-        o.set_plot_annotation(life_times);
-        
-        f = figure;
-        set(f, 'name', ['Motility - ' fn], 'NumberTitle', 'off');
-        h = histogram(displacements, 'FaceColor', 'r');
-        o.set_plot_annotation(displacements);
-      
+
+        if o.get_do_track()    
+
+            save([fn '.mat'], 'all_spots_history');
+
+            f = figure;
+            set(f, 'name', ['Life time - ' fn], 'NumberTitle', 'off');
+            life_times = single(life_times) / o.frame_rate;        
+            h = histogram(life_times, 'FaceColor', 'g');
+            o.set_plot_annotation(life_times);
+
+            f = figure;
+            set(f, 'name', ['Motility - ' fn], 'NumberTitle', 'off');
+            h = histogram(displacements, 'FaceColor', 'r');
+            o.set_plot_annotation(displacements);
+
+            f = figure;
+            set(f, 'name', ['Latency - ' fn], 'NumberTitle', 'off');
+            latencies = single(latencies) / o.frame_rate;        
+            h = histogram(latencies, 'FaceColor', 'c');
+            o.set_plot_annotation(latencies);
+
+        end
+    
         f = figure;
         set(f, 'name', ['Intensity - ' fn], 'NumberTitle', 'off');        
         intensities = mean(intensities, 1);
-        time_line = o.stimulation_start + single([1:total_frames_to_analyze]) / o.frame_rate;
+        time_line = (start_frame - 1) / o.frame_rate + single([1:total_frames_to_analyze]) / o.frame_rate;
         plot(time_line, intensities);
-        
-        f = figure;
-        set(f, 'name', ['Latency - ' fn], 'NumberTitle', 'off');
-        latencies = single(latencies) / o.frame_rate;        
-        h = histogram(latencies, 'FaceColor', 'c');
-        o.set_plot_annotation(latencies);
         
     end
     

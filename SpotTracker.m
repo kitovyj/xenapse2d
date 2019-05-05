@@ -6,9 +6,9 @@ properties
     prev_spots_history = {};
     active_spots = {};
     time_point = 1;
-    madwc = 1.4826;
-    %madwc = 0;
-    max_distance = 2.0;
+    %madwc = 1.4826;
+    madwc = 1.0;
+    max_distance = 4.0;
     inertia = 5.0;
     
 end
