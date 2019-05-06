@@ -842,6 +842,10 @@ methods
                 frame = frame - bg;
                 %frame = frame + 1;
 
+                if o.min_value < 0
+                    frame = frame - o.min_value;
+                end
+                
             end
                 
             if lowpass_filtering == 1
