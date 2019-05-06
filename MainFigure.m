@@ -118,7 +118,10 @@ methods
         %o.load('AVG_MDA_6 50Ap 20hz cont_MMStack_Pos0.ome.tif');
         %o.load('Dynamin\Dynamin single pulse latency analysis Baseline 50frame 100hz acqusition\37_CMOS\0125\2\MDA_1 1Ap\MDA_1 1Ap_MMStack_Pos0.ome.tif')
         %o.load('Dynamin\Dynamin single pulse latency analysis Baseline 50frame 100hz acqusition\Test analysis\0121\1_37c\MD-5 bleach ctrl\MD-5 bleach ctrl_MMStack_Pos0.ome.tif');
-        o.load('Dynamin\Dynamin single pulse latency analysis Baseline 50frame 100hz acqusition\Test analysis\0121\1_37c\MDA_3 5Ap 100hz\MDA_3 5Ap 100hz_MMStack_Pos0.ome.tif');
+        %o.load('Dynamin\Dynamin single pulse latency analysis Baseline 50frame 100hz acqusition\Test analysis\0121\1_37c\MDA_3 5Ap 100hz\MDA_3 5Ap 100hz_MMStack_Pos0.ome.tif');
+        
+        %o.load('newest\MDA_4 4Ap\MDA_4 4Ap_MMStack_Pos0.ome.tif');     
+        o.load('d:\muenster\xenapse2d\newest\MDA_1 4Ap\MDA_1 4Ap_MMStack_Pos0.ome.tif');
         
     end
     
@@ -478,7 +481,12 @@ methods
           'Position', [x, y, button_width, button_height], ...
           'Callback', @o.on_analyze_all);
 
-      
+        x = x + button_width + space;
+
+        button_make_movie = uicontrol('Parent', o.panel_xenapse, 'Style', 'pushbutton', 'String', 'Movie', ...
+          'Position', [x, y, button_width, button_height], ...
+          'Callback', @o.on_movie);
+        
         o.panel_separator_xenapse_1st = uipanel('Parent', o.panel_xenapse, 'Units', 'Pixels', 'BorderType', 'none', ...          
           'BackgroundColor', [0.7, 0.7, 0.7], 'Position', panel_separator_xenapse_1st_position );      
 
@@ -499,7 +507,7 @@ methods
         checkbox_show_detected_spots_width = 120;    
         
         o.checkbox_show_detected_spots = uicontrol('Parent', o.panel_xenapse, 'Style', 'checkbox', 'String', ' Show detected spots', ...
-          'Position', [x, y, checkbox_show_detected_spots_width, 20], 'Value', 1, ...
+          'Position', [x, y, checkbox_show_detected_spots_width, 20], 'Value', 0, ...
           'Callback', @o.on_checkbox_show_detected_spots_clicked);      
       
         x = 15;
@@ -756,12 +764,150 @@ methods
     function on_analyze_single(o, button_object, event_data)
         o.analyze_xenapses([o.selected_xenapse]);
     end
-    
+
     function on_analyze_all(o, button_object, event_data)
         
         o.analyze_xenapses([1:size(o.xenapse_centers, 1)]);
                 
     end
+
+    function on_movie(o, button_object, event_data)
+
+        wait_bar = waitbar(0, 'Processing frames...');
+
+        rect = get_xenapse_rectangle(o, o.selected_xenapse);
+        rect = int32(rect);
+        
+        subtract_background = o.get_subtract_background();
+        
+        if subtract_background
+            start_frame = 1;
+            %o.get_stim_start_frame();
+            bg = o.background(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
+        else
+            start_frame = 1;
+        end
+                    
+        intensity = [];
+        
+        lowpass_filtering = o.get_do_lowpass_filtering();
+        
+        current_progress = 0;
+        total_work = size(o.data, 3); 
+        
+        fid = figure('Position', [10 10 900 600]);
+        left = subplot(2, 2, 1);
+        right = subplot(2, 2, 2);
+        
+        surface = 0;
+        
+        intensity = [0];
+        
+        bottom = subplot(2, 2, [3, 4]);
+
+        %ip = plot(a, intensity);         
+        
+        
+        A = get(bottom, 'position');          % gca points at the second one
+        A(1, 4) = A(1, 4) / 2;              % reduce the height by half
+        %A(1, 2) = A(1, 2) + A(1, 4);         % change the vertical position
+        set(bottom, 'position', A);            % set the values you just changed
+
+        lp = get(left, 'position');          % gca points at the second one
+        lp(1, 4) = lp(1, 4) + A(1, 4);              % reduce the height by half        
+        lp(1, 2) = lp(1, 4) - A(1, 4);              % reduce the height by half        
+        set(left, 'position', lp);            % set the values you just changed
+ 
+        rp = get(right, 'position');          % gca points at the second one
+        rp(1, 4) = rp(1, 4) + A(1, 4);              % reduce the height by half        
+        rp(1, 2) = rp(1, 2) - A(1, 4);              % reduce the height by half        
+        set(right, 'position', rp);            % set the values you just changed
+        
+        %subplot(2, 2, [3, 4]);        
+        ip = plot(bottom, intensity);  
+
+        xlim([1 size(o.data, 3)])
+        xlabel('frames')
+        ylabel('mean intensity')
+        
+        set(ip, 'YDataSource', 'intensity');
+        
+        for i = start_frame:size(o.data, 3)
+
+            frame = single(o.data(:, :, i));
+            frame = frame(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
+
+            if subtract_background == 1
+
+                frame = frame - bg;
+                %frame = frame + 1;
+
+            end
+                
+            if lowpass_filtering == 1
+
+                frame = o.lowpass_wavelet_filter(frame);
+
+            end
+
+            
+            frame = flipud(frame); 
+
+            x = 1:double(rect(4) + 1);
+            y = 1:double(rect(3) + 1);
+            [X, Y] = meshgrid(x, y);
+            %contourf(X, Y, frame_data, 10)
+
+            axes(left);
+            %subplot(2, 2, 1);
+
+            %surf(X, Y, frame_data, 'Edgecolor', 'none');
+            if surface ~= 0
+               delete(surface); 
+            end
+            surface = surf(X, Y, frame, 'FaceAlpha', 0.5);
+            zlim([0 1]);
+            caxis([0 0.5])
+
+            axes(right);
+            %subplot(2, 2, 2);
+            
+            x = 1:double(rect(4) + 1);
+            y = 1:double(rect(3) + 1);
+            [X, Y] = meshgrid(x, y);
+            contourf(X, Y, frame, 20);
+            caxis([0 0.5])
+             
+            %subplot(2, 2, [3, 4]);
+            
+            if i == start_frame
+               intensity = [mean(mean(frame))];
+            else
+               intensity = [intensity mean(mean(frame))]; 
+            end
+            
+            %x = start_frame:i;
+            %set(ip, 'YData', intensity, 'XData', x);
+            refreshdata(ip, 'caller');
+            %drawnow;
+            %pause(.1);
+            
+            F = getframe(fid);
+            [X, Map] = frame2im(F);
+
+            imwrite(X, "out.tif", 'WriteMode', 'append');
+            %saveas(fid, "out.tif", 'WriteMode', 'append');
+            
+            %disp(tracker.spots_history{6});            
+            
+            waitbar(single(current_progress) / total_work, wait_bar);
+            current_progress = current_progress + 1;
+
+        end
+        
+        close(wait_bar);
+        
+    end    
     
     function r = get_subtract_background(o)
          r = get(o.checkbox_subtract_background, 'Value');
@@ -789,9 +935,9 @@ methods
     
     function r = lowpass_wavelet_filter(o, image)
        
-        %r = imgaussfilt(image, 1.0);
+        r = imgaussfilt(image, 1.0);
         
-        
+        %{
         total_levels = 2;
         level = 1;
         n = prod( size(image) );
@@ -804,7 +950,7 @@ methods
         thr = delta * sqrt(2*log(n));
         NC = wthcoef2('t',C,S,level,thr,'s'); % i use the soft threshold
         r = waverec2(NC, S, 'bior3.7');
-        
+        %}
         
     end
         
@@ -827,6 +973,10 @@ methods
             
             for i = 2:size(o.original_data, 3)
                 frame = single(o.data(:, :, i));
+                
+                %frame = imgaussfilt(frame, 1.0);
+
+                        
                 current = alpha * frame + (1.0 - alpha) * current;  
                 o.data(:, :, i) = current;
                 p = single(i) / size(o.original_data, 3);
@@ -980,6 +1130,28 @@ methods
         
         axes(o.xenapse_view_axes);
         
+        x = 1:double(rect(4) + 1);
+        y = 1:double(rect(3) + 1);
+        [X, Y] = meshgrid(x, y);
+        %contourf(X, Y, frame_data, 10)
+        
+        %surf(X, Y, frame_data, 'Edgecolor', 'none');
+        surf(X, Y, frame_data);
+        zlim([0 1]);
+        caxis([0 0.5])
+        
+        n = 20;
+        %shading interp;
+        %colormap(parula(n + 1)); 
+        %hold on;
+        %[M, c] = contour3(X, Y, frame_data, n);
+        
+        %surf(X, Y, frame_data, 'Edgecolor', 'none');
+        
+        %c.LineWidth = 3;
+        
+        
+        %{
         if o.xenapse_view_image_initialized
             
             set(o.xenapse_view_image, 'CData', frame_data_u8); 
@@ -989,11 +1161,13 @@ methods
             delete(o.xenapse_view_image);
             o.xenapse_view_image = imshow(frame_data_u8); 
             %caxis(o.xenapse_view_axes, [0 1]);
+            %colormap(o.xenapse_view_axes, o.views_colormap);
             colormap(o.xenapse_view_axes, o.views_colormap);
             % 'CDataMapping', 'scaled'
             o.xenapse_view_image_initialized = 1;
             
         end
+        
         
         if o.get_do_track()
             disp(o.spot_tracker.spots_history{6});
@@ -1039,6 +1213,7 @@ methods
         
         o.spot_circles = new_spot_circles;
         o.spot_texts = new_spot_texts;
+        %}
         
         %{
         center = o.xenapse_centers(o.selected_xenapse, :);
@@ -1130,6 +1305,8 @@ methods
         
         depth = info(1).BitDepth;
         
+        data = single(data);  
+        data = data - single(min(min(min(data))));
         data = single(data) / single(max(max(max(data))));
         
         total_mean = mean(data(:, :, :), 3);

@@ -69,8 +69,11 @@ function process_tiff(fn, out_fn, sigma, remove_bkgd, temp_averaging)
     for i = start_frame:size(data, 3)
 
         frame_data = data(:, :, i);
-                
-        frame_data = frame_data - background;
+        
+        if remove_bkgd == 1
+            frame_data = frame_data - background;
+        end
+        
         if min_value < 0
             frame_data = frame_data - min_value;
         end
