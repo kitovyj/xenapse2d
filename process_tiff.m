@@ -6,6 +6,7 @@ function process_tiff(fn, out_fn, sigma, remove_bkgd, temp_averaging)
 
     data = zeros(info(1).Height, info(1).Width, numel(info), 'single');
     for i = 1:numel(info)
+        
         frame = imread(fn, i);
         data(:, :, i) = single(frame);
         if sigma > 0
@@ -23,7 +24,9 @@ function process_tiff(fn, out_fn, sigma, remove_bkgd, temp_averaging)
         
         wait_bar = waitbar(0, 'Processing frames...');
 
+        data = movmean(data, 5, 3);
         
+        %{
         alpha = temp_averaging;
         current = data(:, :, 1);
 
@@ -35,7 +38,9 @@ function process_tiff(fn, out_fn, sigma, remove_bkgd, temp_averaging)
             waitbar(p, wait_bar);
 
         end
-
+        %}
+        
+        
         close(wait_bar);    
             
     end
@@ -53,7 +58,8 @@ function process_tiff(fn, out_fn, sigma, remove_bkgd, temp_averaging)
 
     stim_start_frame = 50; 
     
-    background = mean(data(:, :, 1:stim_start_frame), 3);
+    %background = mean(data(:, :, 1:stim_start_frame), 3);
+    background = mean(data(:, :, :), 3);
                     
     minimum_values = min(data, [], 3);
     min_value = min(min(minimum_values - background));
@@ -62,7 +68,8 @@ function process_tiff(fn, out_fn, sigma, remove_bkgd, temp_averaging)
     
     if temp_averaging > 0.0
         
-        start_frame = int32(1 / temp_averaging);
+        %start_frame = int32(1 / temp_averaging);
+        start_frame = 1;
         
     end
     
@@ -70,9 +77,9 @@ function process_tiff(fn, out_fn, sigma, remove_bkgd, temp_averaging)
 
         frame_data = data(:, :, i);
         
-        if remove_bkgd == 1
-            frame_data = frame_data - background;
-        end
+        %if remove_bkgd == 1
+        frame_data = frame_data - background;
+        %end
         
         if min_value < 0
             frame_data = frame_data - min_value;

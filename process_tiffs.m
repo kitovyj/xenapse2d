@@ -33,8 +33,11 @@ process_tiff(ctrl_fn, 'control_sigma_1_ta.tif', 1.0, 0, 0.2);
 
 fn1 = 'd:\muenster\xenapse2d\newest\MDA_1 4Ap\MDA_1 4Ap_MMStack_Pos0.ome.tif';
 
-process_tiff(fn1, 'fn1_4ap_no_blur_ta.tif', 0, 0, 0.2);
-process_tiff(fn1, 'fn1_4ap_sigma_0_5_ta.tif', 0.5, 0, 0.2);
-process_tiff(fn1, 'fn1_4ap_sigma_1_ta.tif', 1.0, 0, 0.2);
+%fn1 = 'd:\muenster\xenapse2d\newest\MDA_7_2 2Ap\MDA_7_2 2Ap_MMStack_Pos0.ome.tif';
 
-fn_ctrl = 'd:\muenster\xenapse2d\dynamin 37c no stim\MDA-2 no stim bleach control\MDA-2 no stim bleach control_MMStack_Pos0.ome.tif';
+
+process_tiff(fn1, 'mda1_4ap_no_blur_ta.tif', 0, 0, 0.2);
+process_tiff(fn1, 'mda1_4ap_sigma_0_5_ta.tif', 0.5, 0, 0.2);
+process_tiff(fn1, 'mda1_4ap_sigma_1_ta.tif', 1.0, 0, 0.2);
+
+%fn_ctrl = 'd:\muenster\xenapse2d\dynamin 37c no stim\MDA-2 no stim bleach control\MDA-2 no stim bleach control_MMStack_Pos0.ome.tif';

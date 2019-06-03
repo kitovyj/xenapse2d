@@ -15,9 +15,10 @@ properties
     xenapse_view_image = 0;
     xenapse_view_image_initialized = 0;
     
-    xenapse_centers = 0; 
+    xenapse_centers = 0;
     xenapse_radii = 0;
     xenapse_metric = 0;    
+    responded_xenapses = 0;
     
     selected_xenapse = 1;
     
@@ -39,6 +40,7 @@ properties
     min_life_time = 0.5;
     
     spot_tracker = 0;
+    peak_tracker = 0;
     
     viewed_frame_index = 1; 
     
@@ -99,6 +101,7 @@ methods
     function o = MainFigure()
         
         o.spot_tracker = SpotTracker();
+        o.peak_tracker = PeakTracker();
         
         o.figure_id = figure; 
         
@@ -121,7 +124,9 @@ methods
         %o.load('Dynamin\Dynamin single pulse latency analysis Baseline 50frame 100hz acqusition\Test analysis\0121\1_37c\MDA_3 5Ap 100hz\MDA_3 5Ap 100hz_MMStack_Pos0.ome.tif');
         
         %o.load('newest\MDA_4 4Ap\MDA_4 4Ap_MMStack_Pos0.ome.tif');     
-        o.load('d:\muenster\xenapse2d\newest\MDA_1 4Ap\MDA_1 4Ap_MMStack_Pos0.ome.tif');
+        %o.load('d:\muenster\xenapse2d\newest\MDA_1 4Ap\MDA_1 4Ap_MMStack_Pos0.ome.tif');
+        o.load('d:\muenster\xenapse2d\newest\MDA_7_2 2Ap\MDA_7_2 2Ap_MMStack_Pos0.ome.tif');
+        %o.load('d:\muenster\xenapse2d\newest\MDA_7 4Ap\MDA_7 4Ap_MMStack_Pos0.ome.tif');
         
     end
     
@@ -355,7 +360,7 @@ methods
         checkbox_subtract_background_width = 120;
         
         o.checkbox_subtract_background = uicontrol('Parent', o.panel_general, 'Style', 'checkbox', 'String', ' Subtract background', ...
-          'Position', [x, y, checkbox_subtract_background_width, 20], 'Value', 0, ...
+          'Position', [x, y, checkbox_subtract_background_width, 20], 'Value', 1, ...
           'Callback', @o.on_checkbox_subtract_background_clicked);  
     
         x = x + space + checkbox_subtract_background_width;
@@ -499,7 +504,7 @@ methods
         checkbox_track_width = 60;    
         
         o.checkbox_track = uicontrol('Parent', o.panel_xenapse, 'Style', 'checkbox', 'String', ' Track', ...
-          'Position', [x, y, checkbox_track_width, 20], 'Value', 0, ...
+          'Position', [x, y, checkbox_track_width, 20], 'Value', 1, ...
           'Callback', @o.on_checkbox_track_clicked);      
 
         x = x + checkbox_track_width + space;      
@@ -507,7 +512,7 @@ methods
         checkbox_show_detected_spots_width = 120;    
         
         o.checkbox_show_detected_spots = uicontrol('Parent', o.panel_xenapse, 'Style', 'checkbox', 'String', ' Show detected spots', ...
-          'Position', [x, y, checkbox_show_detected_spots_width, 20], 'Value', 0, ...
+          'Position', [x, y, checkbox_show_detected_spots_width, 20], 'Value', 1, ...
           'Callback', @o.on_checkbox_show_detected_spots_clicked);      
       
         x = 15;
@@ -684,6 +689,7 @@ methods
         
         if o.get_do_track() && o.viewed_frame_index > value
             o.spot_tracker.clear_history();
+            o.peak_tracker.clear_history();
         end
 
         o.viewed_frame_index = value;
@@ -702,6 +708,7 @@ methods
         
         if o.get_do_track()
             o.spot_tracker.clear_history();
+            o.peak_tracker.clear_history();
         end
         
         set(o.slider_frames{1}, 'Value', o.viewed_frame_index);
@@ -773,35 +780,103 @@ methods
 
     function on_movie(o, button_object, event_data)
 
+        total_work = size(o.data, 3);
+        current_progress = 0;
+        wait_bar = waitbar(0, 'Doing analysis...');
+        
+        spots_history = [];
+        intensity = [];
+        %[spots_history intensity] = o.analyze_xenapse(o.selected_xenapse, wait_bar, current_progress, total_work);
+        %spots_history = cell2mat(spots_history);
+        %spots_history = sortrows(spots_history, 2);
+        
+        close(wait_bar);
+        
         wait_bar = waitbar(0, 'Processing frames...');
+        
 
+        
         rect = get_xenapse_rectangle(o, o.selected_xenapse);
         rect = int32(rect);
         
         subtract_background = o.get_subtract_background();
+        lowpass_filtering = o.get_do_lowpass_filtering();
+
+        xenapse_data = o.data(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)), :);      
+        
+        
+        event_tracker = EventTracker();
+        
+        stim_start_frame = o.get_stim_start_frame();
+                    
+        spots_history = event_tracker.detect_events(xenapse_data, subtract_background, lowpass_filtering, stim_start_frame);
+
+        start_frame = 1;
+        
+        for i = start_frame:size(xenapse_data, 3)
+
+            frame = xenapse_data(:, :, i);
+        
+            if lowpass_filtering == 1
+    
+                frame = imgaussfilt(frame, 2.0);
+                
+                %frame = o.lowpass_wavelet_filter(frame);
+
+            end
+            
+            xenapse_data(:, :, i) = frame;
+            
+        end
         
         if subtract_background
-            start_frame = 1;
+            
             %o.get_stim_start_frame();
-            bg = o.background(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
-        else
-            start_frame = 1;
+            %bg = o.background(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
+            
+            if stim_start_frame ~= 0
+                bg = mean(xenapse_data(:, :, 1:stim_start_frame), 3);
+                %bg = mean(xenapse_data(:, :, :), 3);
+            else
+                bg = zeros(size(xenapse_data, 1), size(xenapse_data, 2));
+            end            
+            
+            xenapse_data = xenapse_data - bg;
+            
         end
-                    
-        intensity = [];
+
+                
+        intensity = mean(xenapse_data, [1, 2]);
+        intensity = intensity - min(intensity);
+        intensity = intensity / max(intensity); 
+ 
+        mx = max(max(max(xenapse_data)));
+        mn = min(min(min(xenapse_data)));
+        xenapse_data = xenapse_data - mn;
+        xenapse_data = xenapse_data / (mx - mn);
         
-        lowpass_filtering = o.get_do_lowpass_filtering();
+        first_frame = single(xenapse_data(:, :, start_frame));
         
+        displayed_intensity = [ intensity(1) ];
+
         current_progress = 0;
         total_work = size(o.data, 3); 
         
         fid = figure('Position', [10 10 900 600]);
         left = subplot(2, 2, 1);
+
+        x = 1:double(rect(4) + 1);
+        y = 1:double(rect(3) + 1);
+        [X, Y] = meshgrid(x, y);
+        
+        surface_h = surf(X, Y, first_frame, 'FaceAlpha', 1.0);
+        zlim([0 1]);
+        caxis([0 1])
+        
         right = subplot(2, 2, 2);
-        
-        surface = 0;
-        
-        intensity = [0];
+         
+        [~, contour_h] = contourf(X, Y, first_frame, 20);
+        caxis([0 1])        
         
         bottom = subplot(2, 2, [3, 4]);
 
@@ -824,19 +899,23 @@ methods
         set(right, 'position', rp);            % set the values you just changed
         
         %subplot(2, 2, [3, 4]);        
-        ip = plot(bottom, intensity);  
+        ip = plot(bottom, displayed_intensity);  
 
         xlim([1 size(o.data, 3)])
+        ylim([0 1]);
         xlabel('frames')
         ylabel('mean intensity')
         
-        set(ip, 'YDataSource', 'intensity');
+        set(ip, 'YDataSource', 'displayed_intensity');
+
+        spot_circles = {};
+        spot_texts = {};
         
         for i = start_frame:size(o.data, 3)
 
-            frame = single(o.data(:, :, i));
-            frame = frame(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
+            frame = single(xenapse_data(:, :, i));
 
+            %{
             if subtract_background == 1
 
                 frame = frame - bg;
@@ -847,52 +926,71 @@ methods
                 end
                 
             end
-                
-            if lowpass_filtering == 1
-
-                frame = o.lowpass_wavelet_filter(frame);
-
-            end
-
+            %}
+            
             
             frame = flipud(frame); 
 
-            x = 1:double(rect(4) + 1);
-            y = 1:double(rect(3) + 1);
-            [X, Y] = meshgrid(x, y);
-            %contourf(X, Y, frame_data, 10)
-
-            axes(left);
-            %subplot(2, 2, 1);
-
-            %surf(X, Y, frame_data, 'Edgecolor', 'none');
-            if surface ~= 0
-               delete(surface); 
-            end
-            surface = surf(X, Y, frame, 'FaceAlpha', 0.5);
-            zlim([0 1]);
-            caxis([0 0.5])
-
-            axes(right);
-            %subplot(2, 2, 2);
-            
-            x = 1:double(rect(4) + 1);
-            y = 1:double(rect(3) + 1);
-            [X, Y] = meshgrid(x, y);
-            contourf(X, Y, frame, 20);
-            caxis([0 0.5])
-             
-            %subplot(2, 2, [3, 4]);
-            
-            if i == start_frame
-               intensity = [mean(mean(frame))];
-            else
-               intensity = [intensity mean(mean(frame))]; 
-            end
-            
-            %x = start_frame:i;
-            %set(ip, 'YData', intensity, 'XData', x);
+            set(surface_h, 'ZData', frame);
+            set(contour_h, 'ZData', frame);
+                         
+            displayed_intensity = intensity(1:i);
             refreshdata(ip, 'caller');
+
+            % draw spots
+  
+            axes(right);
+            
+            new_spot_circles = {};
+            new_spot_texts = {};
+            
+            for j = 1:numel(spots_history)
+                
+                h = spots_history{j};
+                
+                appearance_time_point = h(1, 1);
+                
+                if appearance_time_point > i
+                   continue; 
+                end
+                
+                disappearance_time_point = h(end, 1);
+                
+                if disappearance_time_point < i
+                   continue; 
+                end
+                
+                
+                % hp = h(int64(i - appearance_time_point + 1), :);
+                
+                index = find(h(:, 1) > i, 1);
+                
+                if isempty(index)
+                   hp = h(end, :);
+                else
+                   hp = h(index - 1, :);                    
+                end
+                
+                p = hp(2:3);
+                area = hp(5);
+                id = j;
+                x = p(2);
+                y = p(1);
+                r = sqrt(area / 3.14);
+                c = draw_circle(x, y, r);
+                new_spot_circles{end + 1} = c;
+                t = text(x, y, num2str(id), 'Color', 'black', 'HorizontalAlignment', 'center', 'BackgroundColor', [1, 1, 1, 0.5], ...
+                    'EdgeColor', [0, 0, 0, 0.5]);
+                new_spot_texts{end + 1} = t;
+                
+            end
+
+            cellfun(@delete, spot_circles)        
+            cellfun(@delete, spot_texts)
+
+            spot_circles = new_spot_circles;
+            spot_texts = new_spot_texts;
+            
             %drawnow;
             %pause(.1);
             
@@ -939,7 +1037,7 @@ methods
     
     function r = lowpass_wavelet_filter(o, image)
        
-        r = imgaussfilt(image, 1.0);
+        r = imgaussfilt(image, 2.0);
         
         %{
         total_levels = 2;
@@ -997,7 +1095,7 @@ methods
             
             %o.background = mean(o.data(:, :, 1:stim_start_frame), 3);
             
-            o.background = mean(o.data(:, :, stim_start_frame), 3);
+            o.background = mean(o.data(:, :, :), 3);
             
             minimum_values = min(o.data, [], 3);
                      
@@ -1046,7 +1144,19 @@ methods
         
         new_xenapse_circles = viscircles(displayed_centers, displayed_radii, ...
             'EdgeColor', 'g', 'LineWidth', 0.7, 'EnhanceVisibility', false, 'LineStyle', '--');
-       
+        
+        responded_centers = o.xenapse_centers(o.responded_xenapses == 1.0, :);
+        responded_radii = zeros(size(responded_centers, 1), 1);
+        responded_radii(:) = 2;
+        
+        new_responded_circles = viscircles(responded_centers, responded_radii, ...
+            'EdgeColor', 'g', 'LineWidth', 0.7, 'EnhanceVisibility', false, 'LineStyle', '-');       
+        
+        %new_xenapse_circlesnew_responded_circles
+        
+        
+        %o.responded_xenapses
+        
         rect_position = o.get_xenapse_rectangle(o.selected_xenapse);
         rect_color = [1.0 1.0 1.0];
         new_selected_xenapse_rectangle = rectangle('Position', rect_position, 'EdgeColor', rect_color, 'LineStyle', ':', 'Curvature', 0.0, 'LineWidth', 0.6);
@@ -1101,6 +1211,8 @@ methods
 
         if o.get_do_lowpass_filtering() == 1
             
+            %frame_data = imgaussfilt(frame_data, 1.0);
+            
             frame_data = o.lowpass_wavelet_filter(frame_data);
             
         end
@@ -1109,13 +1221,22 @@ methods
         madwc = get(o.slider_madwc{1}, 'Value') / 10000.;
         o.spot_tracker.madwc = madwc;
        
+        pt_start_frame = o.get_stim_start_frame();
+        frame_data_all = o.data(:, :, 1:pt_start_frame);
+        frame_data_all = frame_data_all(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)), :);
+        sigma = mean(mean(std(frame_data_all, 0, 3)));
+
+        o.peak_tracker.prominence_threshold = sigma;
+        
         if o.get_do_track()
             
-            [spots, regions] = o.spot_tracker.track(frame_data);        
+            %[spots, regions] = o.spot_tracker.track(frame_data);        
+            [spots, regions] = o.peak_tracker.track(frame_data);        
                     
         else
             
-            [spots, regions] = o.spot_tracker.detect_spots(frame_data);
+            %[spots, regions] = o.spot_tracker.detect_spots(frame_data);
+            [spots, regions] = o.peak_tracker.detect_spots(frame_data);
             
         end
         
@@ -1134,17 +1255,105 @@ methods
         
         axes(o.xenapse_view_axes);
         
+        frame_data = flipud(frame_data);
+        
         x = 1:double(rect(4) + 1);
         y = 1:double(rect(3) + 1);
         [X, Y] = meshgrid(x, y);
-        %contourf(X, Y, frame_data, 10)
+        contourf(X, Y, frame_data, 20)
         
         %surf(X, Y, frame_data, 'Edgecolor', 'none');
-        surf(X, Y, frame_data);
+        %surf(X, Y, frame_data);
         zlim([0 1]);
         caxis([0 0.5])
+        set(gca, 'xtick', []);
+        set(gca, 'xticklabel', []);
+        set(gca,'Visible','off');
         
-        n = 20;
+        
+        % iterate, find inersection
+        
+        %{
+
+        column_peaks = zeros(size(frame_data));
+        column_proms = zeros(size(frame_data));
+        row_peaks = zeros(size(frame_data));
+        row_proms = zeros(size(frame_data));
+        
+        for i = 1:size(frame_data, 1)
+            column = frame_data(i, :);
+            [pks, locs, widths, proms] = findpeaks(column);
+            for j = 1:numel(pks)                
+                column_peaks(i, locs(j)) = 1;
+                column_proms(i, locs(j)) = proms(j);                
+            end
+        end
+        
+        for i = 1:size(frame_data, 2)
+            row = frame_data(:, i);
+            [pks, locs, widths, proms] = findpeaks(row);
+            for j = 1:numel(pks)                
+                row_peaks(locs(j), i) = 1;
+                row_proms(locs(j), i) = proms(j);                
+            end
+        end
+        
+        peaks = column_peaks & row_peaks;
+        %peaks = column_peaks;
+        proms = max(column_proms, row_proms);
+        
+        peaks = find(peaks ~= 0);
+        %}
+        
+        start_frame = o.get_stim_start_frame();
+        frame_data_all = o.data(:, :, 1:start_frame);
+        frame_data_all = frame_data_all(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)), :);
+        sigma = std(frame_data_all, 0, 3);
+        sigma = flipud(sigma);
+        
+        
+        %{
+        dilationMask = ones(3);
+        dilationMask(5) = 0;
+        dilSignal = imdilate(frame_data, dilationMask);
+        
+        peaks = frame_data > dilSignal;
+        
+        %peaks = (frame_data - dilSignal) > 0.002;
+        
+        peaks = find(peaks == 1);
+        %}
+        
+        %{
+        centers = [];
+        radii = [];
+        
+        for i = 1:numel(peaks)
+           
+            v = int64(peaks(i));
+            x = idivide(v, int64(size(frame_data, 1))) + 1;
+            y = mod(v, size(frame_data, 1)) + 1;
+            
+            if x == 1 || y == 1 || x == size(frame_data, 2) || y == size(frame_data, 1)
+               continue; 
+            end
+            
+            if proms(y, x) < 2*sigma(y, x)
+                continue;
+            end
+            
+            centers = [centers; [x, y] ];
+            radii = [radii; 1];
+            
+        end
+        
+        viscircles(centers, radii);
+        
+        %}
+        
+        i = 1;
+        
+        %n = 20;
         %shading interp;
         %colormap(parula(n + 1)); 
         %hold on;
@@ -1171,11 +1380,8 @@ methods
             o.xenapse_view_image_initialized = 1;
             
         end
+        %}
         
-        
-        if o.get_do_track()
-            disp(o.spot_tracker.spots_history{6});
-        end
         
         % id y x amplitude area
         
@@ -1192,13 +1398,13 @@ methods
                 area = s(5);
                 id = s(1);
 
-                x = p(1);
-                y = p(2);
+                x = p(2);
+                y = p(1);
 
                 r = sqrt(area / 3.14);
 
-                %c = draw_circle(x, y, r);
-                %new_spot_circles{spi} = c;
+                c = draw_circle(x, y, r);
+                new_spot_circles{spi} = c;
                 
                 if o.get_do_track()
                     t = text(x, y, num2str(id), 'Color', 'black', 'HorizontalAlignment', 'center', 'BackgroundColor', [1, 1, 1, 0.5], ...
@@ -1217,7 +1423,7 @@ methods
         
         o.spot_circles = new_spot_circles;
         o.spot_texts = new_spot_texts;
-        %}
+        
         
         %{
         center = o.xenapse_centers(o.selected_xenapse, :);
@@ -1355,6 +1561,9 @@ methods
                             
         end
         
+
+        
+        
         %figure;
         %imshow(BW);
       
@@ -1406,6 +1615,35 @@ methods
         close(wait_bar);
         
         o.prepare_processed_data();        
+
+        o.responded_xenapses = zeros(size(o.xenapse_centers, 1), 1);
+        
+        for i = 1:size(o.xenapse_centers, 1)
+            
+            rect = get_xenapse_rectangle(o, i);
+            rect = int32(rect);
+
+            data = o.data(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)), :);
+            
+            intensity = mean(data, [1, 2]);
+            intensity = imgaussfilt(squeeze(intensity), 100.0);
+            [pks, locs, widths, proms] = findpeaks(intensity);
+            
+            if numel(pks) == 0
+                continue;
+            end
+            
+            [argvalue, argmax] = max(pks);
+            
+            time = locs(argmax) / o.frame_rate; 
+            
+            if time > o.stimulation_start + 1 && time < o.stimulation_start + 5
+               
+                o.responded_xenapses(i) = 1;
+                
+            end
+        
+        end
         
         o.update_general_view();        
         o.update_xenapse_view();
@@ -1422,9 +1660,17 @@ methods
     end
 
     function [spots_history, intensity] = analyze_xenapse(o, xenapse_index, waitbar_object, current_progress, total_work)
-    
-        tracker = SpotTracker();     
+
+        tracker = PeakTracker();     
+        tracker.prominence_threshold = o.peak_tracker.prominence_threshold; 
+        sigma = o.peak_tracker.prominence_threshold;
         
+        %{
+        tracker = SpotTracker();     
+        madwc = get(o.slider_madwc{1}, 'Value') / 10000.;
+        tracker.madwc = madwc;
+        %}
+             
         subtract_background = o.get_subtract_background();
         rect = get_xenapse_rectangle(o, xenapse_index);
         rect = int32(rect);
@@ -1435,15 +1681,13 @@ methods
         else
             start_frame = 1;
         end
-                    
+        
         intensity = [];
         
         lowpass_filtering = o.get_do_lowpass_filtering();
-        madwc = get(o.slider_madwc{1}, 'Value') / 10000.;
-        tracker.madwc = madwc;
         
         for i = start_frame:size(o.data, 3)
-
+                        
             frame = single(o.data(:, :, i));
             frame = frame(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
 
@@ -1460,12 +1704,13 @@ methods
 
             end
             
-            intensity = [intensity mean(mean(frame))]; 
+            intensity = [intensity mean(mean(frame))];     
             
-            
+            %{
             if o.get_do_track()    
                 tracker.track(frame);
             end
+            %}
             
             %disp(tracker.spots_history{6});            
             
@@ -1474,11 +1719,64 @@ methods
 
         end
         
-        spots_history = tracker.spots_history;
+        %spots_history = tracker.spots_history;
+        %spots_history = o.find_events(xenapse_index);
+
+        rect = get_xenapse_rectangle(o, xenapse_index);
+        rect = int32(rect);
+        
+        subtract_background = o.get_subtract_background();
+        lowpass_filtering = o.get_do_lowpass_filtering();
+
+        xenapse_data = o.data(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)), :);      
+        
+        event_tracker = EventTracker();
+        
+        stim_start_frame = o.get_stim_start_frame();
+                    
+        prominent_spots = {};
+        spots_history = event_tracker.detect_events(xenapse_data, subtract_background, lowpass_filtering, stim_start_frame);
+        
+        for i = 1:numel(spots_history)
+            
+            h = spots_history{i};
+            
+            %{
+            max_prominence = max(h(:, 4));
+            
+            if max_prominence < 3*sigma
+                continue;
+            end
+            %}
+
+            latency = h(1, 1);
+            latency_s = single(latency) / o.frame_rate;  
+            
+            %if latency_s > 5
+            %    continue;                
+            %end
+            
+            
+            life_time = h(end, 1) - h(1, 1) + 1;
+            life_time_s = single(life_time) / o.frame_rate;  
+            
+            if life_time_s < o.min_life_time
+                continue;
+            end
+                        
+            prominent_spots{end + 1} = h;
+            
+        end
+        
+        spots_history = prominent_spots;
+        
+        
         
     end 
     
     function set_plot_annotation(o, data)
+        
+        disp(data);
         
         % Calculate the min, max, mean, median, and standard deviation
         dmin = min(data);
@@ -1538,32 +1836,13 @@ methods
                 sph = spots_history{i};
 
                 latency = sph(1, 1);
- 
-                life_time = sph(end, 1) - sph(1, 1) + 1;
-                life_time_s = single(life_time) / o.frame_rate;  
-                
-                %o.min_life_time = 0;
-
-                %disp(sph(1, 1));
-                %disp(sph(end, 1));
-                %disp(i);
-                %disp(life_time_s);
-                
-                if life_time_s < o.min_life_time
-                    continue
-                end
                                   
                 latencies = [latencies latency];
-                
-                %{
-                if life_time < 3
-                    continue
-                end
-                %}
-                
+                                
+                life_time = sph(end, 1) - sph(1, 1) + 1;
                 life_times = [life_times life_time];
                 
-                path = sph(:, 4:5);
+                path = sph(:, 2:3);
                 max_displacement = 0;
                 for j = 1:size(path, 1)
                     d = sqrt(sum((path(1, :) - path(j, :)) .^ 2));
