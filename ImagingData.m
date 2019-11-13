@@ -20,7 +20,7 @@ properties
     pixel_size = 160;
     %stimulation_start = 0.5;
     %stimulation_start = 0.0;  
-    stimulation_start = 0.5;     
+    stimulation_start = 2.0;     
     temporal_averaging_alpha = 0.2;
     
     min_life_time = 0.5;

@@ -14,12 +14,12 @@ properties
     xenapse_view_axes = 0;
     xenapse_view_image = 0;
     xenapse_view_image_initialized = 0;
-    
-    xenapse_centers = 0;
-    xenapse_radii = 0;
-    xenapse_metric = 0;    
-    responded_xenapses = 0;
-    
+
+    data = 0;
+
+    peak_tracker = PeakTracker();
+    spot_tracker = SpotTracker();
+
     selected_xenapse = 1;
     
     xenapse_circles = 0;
@@ -27,21 +27,10 @@ properties
     
     xenapse_size_extension = 1.3;
     
-    original_data = 0;
-    data = 0;
-    background = 0;
-    frame_rate = 100;
     pixel_size = 160;
     %stimulation_start = 0.5;
     %stimulation_start = 0.0;  
-    stimulation_start = 0.5;     
-    temporal_averaging_alpha = 0.2;
-    
-    min_life_time = 0.5;
-    
-    spot_tracker = 0;
-    peak_tracker = 0;
-    
+        
     viewed_frame_index = 1; 
     
     spot_circles = {};
@@ -91,7 +80,7 @@ properties
     
     checkbox_track = 0;
     checkbox_show_detected_spots = 0;
-
+    
 end
     
 methods
@@ -100,8 +89,7 @@ methods
                  
     function o = MainFigure()
         
-        o.spot_tracker = SpotTracker();
-        o.peak_tracker = PeakTracker();
+        o.data = ImagingData();
         
         o.figure_id = figure; 
         
@@ -319,7 +307,7 @@ methods
         frame_rates = { '20', '100' };
                     
         selection = 2;
-        o.frame_rate = str2num(frame_rates{selection});
+        o.data.frame_rate = str2num(frame_rates{selection});
         
         combobox_frame_rate = uicontrol(o.panel_general, 'Style', 'popupmenu', 'String', frame_rates, ...
           'Enable', 'on', 'Position', combobox_frame_rate_position, 'Callback', @o.on_combobox_frame_rate_changed, ...
@@ -340,7 +328,7 @@ methods
         label_width = 70;
         text_width = 30;
         
-        ss_str = num2str(o.stimulation_start, '%.2f');
+        ss_str = num2str(o.data.stimulation_start, '%.2f');
         text_stimulation_start_label = uicontrol('Parent', o.panel_general, 'Style', 'text', 'String', 'Stim. start, s:', ...
           'Position', [x, y, label_width, 20], 'HorizontalAlignment', 'right');       
         px = x + label_width + label_space;
@@ -373,7 +361,7 @@ methods
         x = x + space/3 + checkbox_temporal_averaging_width;
         edit_temporal_averaging_width = 40;
         
-        o.edit_temporal_averaging = uicontrol(o.panel_general, 'Style', 'edit', 'String', num2str(o.temporal_averaging_alpha), ...
+        o.edit_temporal_averaging = uicontrol(o.panel_general, 'Style', 'edit', 'String', num2str(o.data.temporal_averaging_alpha), ...
           'Enable', 'on', 'Position', [x, y, edit_temporal_averaging_width, 20], 'Callback', @o.on_edit_temporal_averaging_changed);      
       
         x = x + edit_temporal_averaging_width + space;
@@ -535,7 +523,7 @@ methods
         o.slider_madwc = {jSlider, hContainer};
         set(o.slider_madwc{1}, 'MajorTickSpacing', 100, 'PaintTicks', true, 'PaintLabels', false);
         set(o.slider_madwc{1}, 'Minimum', slider_min, 'Maximum', slider_max);
-        set(o.slider_madwc{1}, 'Value', o.spot_tracker.madwc * 10000);
+        %set(o.slider_madwc{1}, 'Value', o.spot_tracker.madwc * 10000);
         set(o.slider_madwc{1}, 'StateChangedCallback', @o.on_slider_madwc_changed);
         
       else
@@ -560,7 +548,7 @@ methods
         
         fn = size(o.data, 3);
         if o.pixel_size ~= 0
-            duration_s = double(fn - 1) / o.frame_rate;
+            duration_s = double(fn - 1) / o.data.frame_rate;
         else
             duration_s = 0;
         end
@@ -577,7 +565,7 @@ methods
     function update_current_frame_text(o)
         
         if o.pixel_size ~= 0
-            cf_s = double(o.viewed_frame_index - 1) / o.frame_rate;
+            cf_s = double(o.viewed_frame_index - 1) / o.data.frame_rate;
         else
             cf_s = 0;
         end
@@ -1028,7 +1016,7 @@ methods
     end
 
     function r = get_stim_start_frame(o) 
-        r = round(o.stimulation_start * o.frame_rate + 1, 0);
+        r = round(o.data.stimulation_start * o.data.frame_rate + 1, 0);
     end
 
     function r = get_display_threshold(o)
@@ -1060,75 +1048,8 @@ methods
     function prepare_processed_data(o)
                 
         ta = get(o.checkbox_temporal_averaging, 'Value');
-        %ta = 0;
         
-        if ta == 0
-            o.data = o.original_data;
-        else
-            
-            wait_bar = waitbar(0, 'Processing frames...');
-
-            alpha = str2num(get(o.edit_temporal_averaging, 'String'));
-            current = o.original_data(:, :, 1);
-            
-            o.data = o.original_data;
-            
-            for i = 2:size(o.original_data, 3)
-                frame = single(o.data(:, :, i));
-                
-                %frame = imgaussfilt(frame, 1.0);
-
-                        
-                current = alpha * frame + (1.0 - alpha) * current;  
-                o.data(:, :, i) = current;
-                p = single(i) / size(o.original_data, 3);
-                waitbar(p, wait_bar);
-                
-            end
-            
-            close(wait_bar);
-                    
-        end
-     
-        stim_start_frame = o.get_stim_start_frame();
-        if stim_start_frame ~= 0
-            
-            %o.background = mean(o.data(:, :, 1:stim_start_frame), 3);
-            
-            o.background = mean(o.data(:, :, :), 3);
-            
-            minimum_values = min(o.data, [], 3);
-                     
-            o.min_value = min(min(minimum_values - o.background));
-            
-            %o.min_value = 0; 
-            
-            %o.background = mean(o.data(:, :, :), 3);
-        else
-            o.background = zeros(size(o.data, 1), size(o.data, 2));
-        end
-    
-        %{
-        for i = 1:size(o.data, 3)
-    
-            frame_data = o.data(:, :, i);
-            frame_data = frame_data - o.background;
-            if o.min_value < 0
-                frame_data = frame_data - o.min_value;
-            end
-            
-            frame_data = uint16(frame_data);
-        
-            if i == 1
-                imwrite(frame_data, 'out_ctrl.tif')
-            else
-                imwrite(frame_data, 'out_ctrl.tif', 'WriteMode', 'append')
-            end
-            
-        end
-        %}
-        
-
+        o.data.prepare_processed_data(ta);
         
     end
     
@@ -1136,8 +1057,8 @@ methods
         
         axes(o.general_view_axes);
         
-        displayed_centers = o.xenapse_centers;
-        displayed_radii = o.xenapse_radii;
+        displayed_centers = o.data.xenapse_centers;
+        displayed_radii = o.data.xenapse_radii;
         
         displayed_centers(o.selected_xenapse, :) = [];
         displayed_radii(o.selected_xenapse, :) = [];
@@ -1176,8 +1097,8 @@ methods
     
     function r = get_xenapse_rectangle(o, xenapse_index)
         
-        center = o.xenapse_centers(xenapse_index, :);
-        radius = o.xenapse_radii(xenapse_index);
+        center = o.data.xenapse_centers(xenapse_index, :);
+        radius = o.data.xenapse_radii(xenapse_index);
        
         rs = radius * 2 * o.xenapse_size_extension;
         hs = rs / 2;
@@ -1198,9 +1119,9 @@ methods
         rect = get_xenapse_rectangle(o, o.selected_xenapse);
         rect = int32(rect);
         
-        frame_data = o.data(:, :, o.viewed_frame_index);
+        frame_data = o.data.data(:, :, o.viewed_frame_index);
         frame_data = frame_data(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
-        bg_data = o.background(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
+        bg_data = o.data.background(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)));
         
         if o.get_subtract_background() == 1
             frame_data = frame_data - bg_data;
@@ -1221,8 +1142,8 @@ methods
         madwc = get(o.slider_madwc{1}, 'Value') / 10000.;
         o.spot_tracker.madwc = madwc;
        
-        pt_start_frame = o.get_stim_start_frame();
-        frame_data_all = o.data(:, :, 1:pt_start_frame);
+        pt_start_frame = o.data.get_stim_start_frame();
+        frame_data_all = o.data.data(:, :, 1:pt_start_frame);
         frame_data_all = frame_data_all(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)), :);
         sigma = mean(mean(std(frame_data_all, 0, 3)));
 
@@ -1305,8 +1226,8 @@ methods
         peaks = find(peaks ~= 0);
         %}
         
-        start_frame = o.get_stim_start_frame();
-        frame_data_all = o.data(:, :, 1:start_frame);
+        start_frame = o.data.get_stim_start_frame();
+        frame_data_all = o.data.data(:, :, 1:start_frame);
         frame_data_all = frame_data_all(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)), :);
         sigma = std(frame_data_all, 0, 3);
         sigma = flipud(sigma);
@@ -1440,10 +1361,10 @@ methods
 
     function update_general_view(o)
         
-        frame_data = o.data(:, :, o.viewed_frame_index);
+        frame_data = o.data.data(:, :, o.viewed_frame_index);
 
         if o.get_subtract_background() == 1
-            frame_data = frame_data - o.background;
+            frame_data = frame_data - o.data.background;
             if o.min_value < 0
                 frame_data = frame_data - o.min_value;
             end
@@ -1496,154 +1417,10 @@ methods
         o.loaded_file_name = fn;
         
         o.update_title();
-        
-        wait_bar = waitbar(0, 'Loading file...');
-        
-        info = imfinfo(fn);
-        
-        data = zeros(info(1).Height, info(1).Width, numel(info), 'single');
-        for i = 1:numel(info)
-            frame = imread(fn, i);
-            data(:, :, i) = single(frame);
-            
-            %data = cat(3, data, frame);
 
-            p = single(i) / numel(info);
-            waitbar(p, wait_bar);
-                
-        end
+        ta = get(o.checkbox_temporal_averaging, 'Value');
         
-        depth = info(1).BitDepth;
-        
-        data = single(data);  
-        data = data - single(min(min(min(data))));
-        data = single(data) / single(max(max(max(data))));
-        
-        total_mean = mean(data(:, :, :), 3);
-        
-        mean_value = mean(mean(total_mean));
-        
-        t = total_mean;
-        %t(t < mean_value) = 0;
-        
-        %t = o.lowpass_wavelet_filter(t);
-        
-        level = graythresh(t);
-        BW = imbinarize(t,level);
-        BW = imfill(BW,'holes');
-        
-        se = strel('disk',5);
-        BW = imopen(BW, se);
-        
-        BW = bwconvhull(BW,'objects');
-        BW = imfill(BW,'holes');
-        CC = bwconncomp(BW);
-        S = regionprops(CC,'Centroid');
-        ma = regionprops(CC,'MajorAxisLength');
-      
-        centers = [];
-        radii = [];
-        
-        for i = 1:numel(S)
-            
-            s = S(i);
-            s = s.Centroid;
-            
-            m = ma(i);
-            m = m.MajorAxisLength;
-            
-            if m < 20
-                continue;
-            end
-            
-            centers = [centers; s];
-            radii = [radii; (m / 2)];
-                            
-        end
-        
-
-        
-        
-        %figure;
-        %imshow(BW);
-      
-        %{
-        total_levels = 2;
-        level = 1;
-        n = prod( size(total_mean) );
-        Ib = total_mean;
-        [C,S] = wavedec2(Ib,total_levels,'bior3.7');
-        DH = detcoef2('all',C,S,level);% extract details coefficient from level 1
-        DH = DH(:);
-        delta = median( abs(DH) ) / 0.6745;
-        %delta = median( abs(DH) ) / 0.0001;
-        thr = delta * sqrt(2*log(n));
-        NC = wthcoef2('t',C,S,level,thr,'s'); % i use the soft threshold
-        X = waverec2(NC, S, 'bior3.7');
-        %figure;
-        %imagesc(Ib); title('Noisy Image'); colormap gray;
-        %figure;
-        %imagesc(X); title('Denoised 1st level coeffs'); colormap gray;        
-        
-        
-        mean_value = mean(mean(X));
-        
-        t = X;
-        %t(t < mean_value*1) = 0;
-        
-        figure;
-        imshow(t);
-        
-        %}
-        
-        
-        
-        %data = data / (2^(depth - 8));
-       
-        %set(o.general_view_axes, 'Visible', 'off'); % imagesc makes axes visible again!       
-        
-        %[centers, radii, metric] = imfindcircles(total_mean, [7 22], 'ObjectPolarity', 'bright');
-        %[centers, radii, metric] = imfindcircles(total_mean, [7 22], 'ObjectPolarity', 'bright');
-        o.xenapse_centers = centers; 
-        o.xenapse_radii = radii;
-        o.xenapse_radii(:) = mean(o.xenapse_radii);
-        %o.xenapse_metric = metric;
-        
-        o.original_data = data;
-        o.data = data;
-        
-        close(wait_bar);
-        
-        o.prepare_processed_data();        
-
-        o.responded_xenapses = zeros(size(o.xenapse_centers, 1), 1);
-        
-        for i = 1:size(o.xenapse_centers, 1)
-            
-            rect = get_xenapse_rectangle(o, i);
-            rect = int32(rect);
-
-            data = o.data(rect(2):(rect(2) + rect(4)), rect(1):(rect(1) + rect(3)), :);
-            
-            intensity = mean(data, [1, 2]);
-            intensity = imgaussfilt(squeeze(intensity), 100.0);
-            [pks, locs, widths, proms] = findpeaks(intensity);
-            
-            if numel(pks) == 0
-                continue;
-            end
-            
-            [argvalue, argmax] = max(pks);
-            
-            time = locs(argmax) / o.frame_rate; 
-            
-            if time > o.stimulation_start + 1 && time < o.stimulation_start + 5
-               
-                o.responded_xenapses(i) = 1;
-                
-            end
-        
-        end
+        o.data.load(fn, ta);
         
         o.update_general_view();        
         o.update_xenapse_view();
@@ -1661,9 +1438,10 @@ methods
 
     function [spots_history, intensity] = analyze_xenapse(o, xenapse_index, waitbar_object, current_progress, total_work)
 
-        tracker = PeakTracker();     
-        tracker.prominence_threshold = o.peak_tracker.prominence_threshold; 
-        sigma = o.peak_tracker.prominence_threshold;
+        
+        %tracker = PeakTracker();     
+        %tracker.prominence_threshold = o.peak_tracker.prominence_threshold; 
+        %sigma = o.peak_tracker.prominence_threshold;
         
         %{
         tracker = SpotTracker();     
@@ -1801,39 +1579,26 @@ methods
 
         wait_bar = waitbar(0, 'Analyzing events...');
 
-        if o.get_subtract_background()
-            start_frame = o.get_stim_start_frame();
-        else
-            start_frame = 1;
-        end
+        subtract_background = o.get_subtract_background();
         
-        total_frames_to_analyze = size(o.data, 3) - start_frame + 1;
-        total_work = total_frames_to_analyze * numel(indices);
-        current_progress = 1;
+        [intensities, all_spots_history] = analyze_xenapses(o, indices, subtract_background, lowpass_filtering)
+                
+        %total_frames_to_analyze = size(o.data, 3) - start_frame + 1;
+        %total_work = total_frames_to_analyze * numel(indices);
+        %current_progress = 1;
         
         life_times = [];
-        displacements = [];
-        
+        displacements = [];        
         intensities = [];
         latencies = [];
 
         all_spots_history = {};
         
-        for k = 1:numel(indices)
+        for k = 1:numel(all_spots_history)
             
-            xi = indices(k);
-            
-            [spots_history, intensity] = o.analyze_xenapse(xi, wait_bar, current_progress, total_work);
-           
-            all_spots_history{end + 1} = spots_history;
-            
-            current_progress = current_progress + total_frames_to_analyze;
-
-            intensities = [intensities; intensity];
-            
-            for i = 1:numel(spots_history)
+            for i = 1:numel(all_spots_history{k})
                 
-                sph = spots_history{i};
+                sph = all_spots_history{k}{i};
 
                 latency = sph(1, 1);
                                   
@@ -1850,13 +1615,14 @@ methods
                         max_displacement = d;
                     end
                 end
+                
                 displacements = [displacements max_displacement];
                 
             end
                         
         end
 
-        close(wait_bar);
+        % close(wait_bar);
 
         [~, fn, ~] = fileparts(o.loaded_file_name);
 
